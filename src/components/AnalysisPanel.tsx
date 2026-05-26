@@ -28,9 +28,9 @@ export default function AnalysisPanel({ analysis, loading }: Props) {
   return (
     <div className="grid grid-cols-3 gap-2 h-full overflow-hidden">
       {sections.map((s, i) => (
-        <div key={i} className="glass-card p-3 overflow-y-auto min-h-0">
-          <h3 className="text-sm font-bold text-[var(--neon-cyan)] mb-1.5 sticky top-0 bg-[rgba(10,10,15,0.95)] pb-1 z-10">{s.title}</h3>
-          <div className="text-[13px] leading-relaxed text-[var(--text-secondary)] [&_strong]:text-[var(--text-primary)]"
+        <div key={i} className="glass-card p-4 overflow-y-auto min-h-0">
+          <h3 className="text-base font-bold text-[var(--neon-cyan)] mb-2 sticky top-0 bg-[rgba(10,10,15,0.95)] pb-1 z-10">{s.title}</h3>
+          <div className="text-[15px] leading-[1.8] text-[var(--text-primary)] [&_strong]:text-white [&_strong]:font-bold"
             dangerouslySetInnerHTML={{ __html: formatContent(s.content) }} />
         </div>
       ))}
@@ -48,14 +48,14 @@ function parseAnalysisSections(md: string) {
 
 function formatContent(text: string): string {
   return text
-    .replace(/^### (.+)$/gm, '<div class="text-[var(--neon-yellow)] font-semibold mt-2 mb-0.5 text-[13px]">$1</div>')
-    .replace(/\*\*(.+?)\*\*/g, '<strong class="text-[var(--text-primary)]">$1</strong>')
-    .replace(/^[①②③④⑤⑥⑦⑧⑨⑩] (.+)$/gm, '<div class="pl-2 text-[12px]">$&</div>')
-    .replace(/^● (.+)$/gm, '<div class="pl-2 text-[var(--neon-red)] text-[12px]">● $1</div>')
-    .replace(/^◎ (.+)$/gm, '<div class="pl-2 text-[var(--neon-green)] text-[12px]">◎ $1</div>')
-    .replace(/^[★☆]+$/gm, '<div class="text-[var(--neon-yellow)] text-[11px] mt-0.5">$&</div>')
-    .replace(/^- (.+)$/gm, '<div class="pl-2 text-[12px]">• $1</div>')
-    .replace(/^█+░*\s/gm, (m) => `<div class="font-mono text-[var(--neon-cyan)] text-[11px]">${m}</div>`)
-    .replace(/\n{2,}/g, '<div class="h-1.5"></div>')
+    .replace(/^### (.+)$/gm, '<div class="text-[var(--neon-yellow)] font-bold mt-3 mb-1 text-[15px]">$1</div>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+    .replace(/^[①②③④⑤⑥⑦⑧⑨⑩] (.+)$/gm, '<div class="pl-3 py-0.5">$&</div>')
+    .replace(/^● (.+)$/gm, '<div class="pl-3 py-0.5 text-[var(--neon-red)]">● $1</div>')
+    .replace(/^◎ (.+)$/gm, '<div class="pl-3 py-0.5 text-[var(--neon-green)]">◎ $1</div>')
+    .replace(/^[★☆]+$/gm, '<div class="text-[var(--neon-yellow)] mt-1">$&</div>')
+    .replace(/^- (.+)$/gm, '<div class="pl-3 py-0.5">• $1</div>')
+    .replace(/^(█+░*\s.+)$/gm, '<div class="font-mono text-[var(--neon-cyan)]">$1</div>')
+    .replace(/\n{2,}/g, '<div class="h-2"></div>')
     .replace(/\n/g, '<br/>');
 }

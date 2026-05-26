@@ -33,7 +33,7 @@ export default function IndicatorRadar({ data }: { data: IndicatorData }) {
 
   return (
     <div className="glass-card p-4">
-      <h3 className="text-sm font-semibold mb-2 text-[var(--neon-cyan)]">關鍵指標雷達（日線）</h3>
+      <h3 className="text-base font-semibold mb-2 text-[var(--neon-cyan)]">關鍵指標雷達（日線）</h3>
       <svg width="100%" height="200" viewBox="0 0 240 200" className="mx-auto">
         {/* Grid */}
         {[0.33, 0.66, 1].map(scale => (
@@ -55,16 +55,16 @@ export default function IndicatorRadar({ data }: { data: IndicatorData }) {
         {points.map((p, i) => (
           <text key={i} x={p[0] + (p[0] > cx ? 8 : p[0] < cx ? -8 : 0)}
             y={p[1] + (p[1] > cy ? 16 : p[1] < cy ? -8 : 0)}
-            textAnchor="middle" fontSize="12" fill="#8888aa">
+            textAnchor="middle" fontSize="13" fill="#a8a8cc">
             {indicators[i].name}
           </text>
         ))}
       </svg>
-      <div className="flex items-center justify-center gap-4 mt-2 text-xs">
+      <div className="flex items-center justify-center gap-4 mt-2 text-sm">
         {indicators.map(ind => (
           <div key={ind.name} className="flex flex-col items-center gap-0.5">
             <span className="text-[var(--text-secondary)]">{ind.name}</span>
-            <span className="font-medium" style={{ color: statusColor(ind.status) }}>{statusLabel(ind.status)}</span>
+            <span className="font-bold" style={{ color: statusColor(ind.status) }}>{statusLabel(ind.status)}</span>
           </div>
         ))}
       </div>

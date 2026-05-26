@@ -37,7 +37,7 @@ export default function MarketSnapshot({ data, name, symbol }: Props) {
       <div className={`text-sm font-medium mt-0.5 ${isUp ? "price-up" : "price-down"}`}>
         {isUp ? "+" : ""}{fmt(change, 2)} ({isUp ? "+" : ""}{changePct.toFixed(2)}%) {isUp ? "▲" : "▼"}
       </div>
-      <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 mt-3 text-xs">
+      <div className="grid grid-cols-2 gap-x-3 gap-y-2 mt-3 text-sm">
         <Row label="開盤" value={fmt(latest.open, 2)} />
         <Row label="最高" value={fmt(latest.high, 2)} />
         <Row label="最低" value={fmt(latest.low, 2)} />

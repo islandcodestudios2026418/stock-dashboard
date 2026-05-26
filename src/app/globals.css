@@ -10,8 +10,8 @@
   --neon-green: #00ff88;
   --neon-red: #ff3366;
   --neon-yellow: #ffcc00;
-  --text-primary: #e8e8f0;
-  --text-secondary: #8888aa;
+  --text-primary: #f0f0f8;
+  --text-secondary: #a8a8cc;
 }
 
 @theme inline {
@@ -37,6 +37,7 @@ body {
   background: var(--bg-primary);
   color: var(--text-primary);
   font-family: var(--font-sans, system-ui, sans-serif);
+  font-size: 15px;
   min-height: 100vh;
 }
 
