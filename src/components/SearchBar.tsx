@@ -15,7 +15,7 @@ export default function SearchBar({ onSearch, loading }: Props) {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [showDrop, setShowDrop] = useState(false);
   const [searching, setSearching] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout>>();
+  const timerRef = useRef<NodeJS.Timeout | null>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
   // Close on outside click
