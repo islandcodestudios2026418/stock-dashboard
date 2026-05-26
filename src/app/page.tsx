@@ -6,6 +6,7 @@ import MarketSnapshot from "@/components/MarketSnapshot";
 import IndicatorRadar from "@/components/IndicatorRadar";
 import RiskGauge from "@/components/RiskGauge";
 import AnalysisPanel from "@/components/AnalysisPanel";
+import MacroPanel from "@/components/MacroPanel";
 import { OHLCV, getIndicatorSummary, calcRiskScore } from "@/lib/indicators";
 import { PriceLevel, TradePlan } from "@/lib/levels";
 
@@ -74,6 +75,9 @@ export default function Home() {
       </header>
 
       {error && <div className="text-sm text-[var(--neon-red)] glass-card px-3 py-2 shrink-0">⚠️ {error}</div>}
+
+      {/* Macro overview - always visible */}
+      <MacroPanel />
 
       {loading && (
         <div className="flex-1 flex items-center justify-center">
