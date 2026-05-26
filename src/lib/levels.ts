@@ -112,8 +112,9 @@ export function calcTradePlan(data: OHLCV[], levels: PriceLevel[]): TradePlan | 
 
   // Nearest support below = stop loss area
   const supports = levels.filter(l => l.type === "support" && l.price < latest).sort((a, b) => b.price - a.price);
-  // Only use resistance levels that are meaningful (at least 1.5x ATR away)
-  const resistances = levels.filter(l => l.type === "resistance" && l.price > latest + atr * 1.5).sort((a, b) => a.price - b.price);
+  // Only use resistance levels that are meaningful (at least 8% away from current price)
+  const minTargetDist = Math.max(atr * 1.5, latest * 0.08);
+  const resistances = levels.filter(l => l.type === "resistance" && l.price > latest + minTargetDist).sort((a, b) => a.price - b.price);
 
   const stopLoss = supports.length > 0
     ? supports[0].price - atr * 0.5
@@ -121,11 +122,11 @@ export function calcTradePlan(data: OHLCV[], levels: PriceLevel[]): TradePlan | 
 
   const target1 = resistances.length > 0
     ? resistances[0].price
-    : latest + atr * 2.5;
+    : latest * 1.15;
 
   const target2 = resistances.length > 1
     ? resistances[1].price
-    : latest + atr * 4;
+    : latest * 1.25;
 
   const risk = latest - stopLoss;
   const reward = target1 - latest;
