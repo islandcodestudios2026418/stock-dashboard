@@ -78,7 +78,6 @@ export default function Home() {
       {loading && (
         <div className="flex-1 flex items-center justify-center">
           <div className="w-6 h-6 border-2 border-[var(--neon-cyan)] border-t-transparent rounded-full animate-spin" />
-          <span className="ml-2 text-[var(--text-secondary)]">載入中...</span>
         </div>
       )}
 
@@ -86,80 +85,58 @@ export default function Home() {
         <div className="flex-1 flex flex-col items-center justify-center">
           <div className="text-5xl mb-3 opacity-20">📈</div>
           <p className="text-base text-[var(--text-secondary)]">搜尋任何股票開始分析</p>
-          <p className="text-xs text-[var(--text-secondary)] mt-1">支援美股（NASDAQ:TSLA）和台股（TWSE:2330）</p>
         </div>
       )}
 
       {data && !loading && (
-        <div className="flex-1 grid grid-cols-12 gap-3 min-h-0 overflow-hidden">
-          {/* LEFT: Snapshot + Indicators */}
-          <div className="col-span-2 flex flex-col gap-3 overflow-y-auto">
+        <div className="flex-1 grid grid-cols-12 grid-rows-[1fr_auto] gap-3 min-h-0 overflow-hidden">
+
+          {/* LEFT COL: Snapshot + Radar */}
+          <div className="col-span-2 row-span-2 flex flex-col gap-3 overflow-y-auto min-h-0">
             <MarketSnapshot data={data.periods} name={data.name} symbol={data.symbol} />
             {indicators && <IndicatorRadar data={indicators} />}
           </div>
 
-          {/* CENTER: Chart (top) + Strategy highlight (bottom) */}
-          <div className="col-span-7 flex flex-col gap-3 min-h-0">
-            {/* Chart */}
-            <div className="glass-card p-3 flex-1 min-h-0 flex flex-col">
-              <div className="flex items-center justify-between mb-2 shrink-0">
-                <h3 className="text-sm font-semibold text-[var(--neon-cyan)]">K 線圖 — {data.symbol}</h3>
-                <div className="flex gap-1">
-                  {["1", "5", "15", "60", "1D", "1W"].map(tf => (
-                    <button key={tf} onClick={() => { setTimeframe(tf); fetchStock(data.symbol, tf); }}
-                      className={`px-2 py-0.5 text-xs rounded ${timeframe === tf
-                        ? "bg-[rgba(0,240,255,0.2)] text-[var(--neon-cyan)] border border-[var(--neon-cyan)]"
-                        : "text-[var(--text-secondary)] border border-transparent"}`}>
-                      {tf}
-                    </button>
-                  ))}
-                </div>
-              </div>
-              <div className="flex-1 min-h-0">
-                <CandlestickChart data={data.periods} />
+          {/* CENTER: Chart - takes most vertical space */}
+          <div className="col-span-7 row-span-1 glass-card p-3 flex flex-col min-h-0">
+            <div className="flex items-center justify-between mb-1 shrink-0">
+              <h3 className="text-sm font-semibold text-[var(--neon-cyan)]">{data.symbol}</h3>
+              <div className="flex gap-1">
+                {["1", "5", "15", "60", "1D", "1W"].map(tf => (
+                  <button key={tf} onClick={() => { setTimeframe(tf); fetchStock(data.symbol, tf); }}
+                    className={`px-2 py-0.5 text-xs rounded ${timeframe === tf
+                      ? "bg-[rgba(0,240,255,0.2)] text-[var(--neon-cyan)] border border-[var(--neon-cyan)]"
+                      : "text-[var(--text-secondary)] border border-transparent"}`}>
+                    {tf}
+                  </button>
+                ))}
               </div>
             </div>
-
-            {/* STRATEGY HIGHLIGHT - below chart, prominent */}
-            {tradePlan && (
-              <div className="shrink-0 glass-card p-4 border-[var(--neon-yellow)] border-2 gradient-border">
-                <div className="flex items-center justify-between">
-                  <h3 className="text-base font-bold text-[var(--neon-yellow)]">
-                    📋 {lang === "zh-TW" ? "今日操作建議" : "Today's Trade Plan"}
-                  </h3>
-                  <RiskGauge score={riskScore} />
-                </div>
-                <div className="grid grid-cols-4 gap-4 mt-3">
-                  <div className="text-center">
-                    <div className="text-xs text-[var(--text-secondary)] mb-1">{lang === "zh-TW" ? "停損" : "Stop"}</div>
-                    <div className="text-lg font-bold font-mono text-[var(--neon-red)]">{tradePlan.stopLoss.toFixed(2)}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xs text-[var(--text-secondary)] mb-1">{lang === "zh-TW" ? "進場" : "Entry"}</div>
-                    <div className="text-lg font-bold font-mono text-[var(--text-primary)]">{tradePlan.entry.toFixed(2)}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xs text-[var(--text-secondary)] mb-1">{lang === "zh-TW" ? "目標1" : "T1"}</div>
-                    <div className="text-lg font-bold font-mono text-[var(--neon-green)]">{tradePlan.target1.toFixed(2)}</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-xs text-[var(--text-secondary)] mb-1">{lang === "zh-TW" ? "目標2" : "T2"}</div>
-                    <div className="text-lg font-bold font-mono text-[var(--neon-green)]">{tradePlan.target2.toFixed(2)}</div>
-                  </div>
-                </div>
-                <div className="mt-2 text-center text-sm">
-                  <span className="text-[var(--text-secondary)]">{lang === "zh-TW" ? "風險報酬比" : "Risk:Reward"} </span>
-                  <span className={`font-bold text-base ${tradePlan.riskReward >= 2 ? "text-[var(--neon-green)]" : tradePlan.riskReward >= 1 ? "text-[var(--neon-yellow)]" : "text-[var(--neon-red)]"}`}>
-                    1:{tradePlan.riskReward.toFixed(1)} {tradePlan.riskReward >= 2 ? "✅" : tradePlan.riskReward >= 1 ? "⚠️" : "❌"}
-                  </span>
-                </div>
-              </div>
-            )}
+            <div className="flex-1 min-h-0">
+              <CandlestickChart data={data.periods} />
+            </div>
           </div>
 
-          {/* RIGHT: Levels + Analysis */}
-          <div className="col-span-3 overflow-y-auto min-h-0">
-            <AnalysisPanel analysis={analysis} levels={levels} tradePlan={null} loading={analysisLoading} />
+          {/* RIGHT COL: Analysis - scrollable */}
+          <div className="col-span-3 row-span-2 overflow-y-auto min-h-0">
+            <AnalysisPanel analysis={analysis} levels={levels} tradePlan={tradePlan} loading={analysisLoading} />
+          </div>
+
+          {/* BOTTOM CENTER: Trade Plan - compact single row */}
+          <div className="col-span-7 row-span-1 shrink-0">
+            {tradePlan && (
+              <div className="glass-card px-4 py-2 border border-[var(--neon-yellow)] flex items-center justify-between gap-4">
+                <span className="text-sm font-bold text-[var(--neon-yellow)] whitespace-nowrap">📋 {lang === "zh-TW" ? "操作建議" : "Trade Plan"}</span>
+                <div className="flex items-center gap-5 text-sm font-mono">
+                  <span><span className="text-[var(--text-secondary)] text-xs mr-1">{lang === "zh-TW" ? "停損" : "Stop"}</span><span className="text-[var(--neon-red)] font-bold">{tradePlan.stopLoss.toFixed(2)}</span></span>
+                  <span><span className="text-[var(--text-secondary)] text-xs mr-1">{lang === "zh-TW" ? "進場" : "Entry"}</span><span className="font-bold">{tradePlan.entry.toFixed(2)}</span></span>
+                  <span><span className="text-[var(--text-secondary)] text-xs mr-1">T1</span><span className="text-[var(--neon-green)] font-bold">{tradePlan.target1.toFixed(2)}</span></span>
+                  <span><span className="text-[var(--text-secondary)] text-xs mr-1">T2</span><span className="text-[var(--neon-green)] font-bold">{tradePlan.target2.toFixed(2)}</span></span>
+                  <span><span className="text-[var(--text-secondary)] text-xs mr-1">R:R</span><span className={`font-bold ${tradePlan.riskReward >= 2 ? "text-[var(--neon-green)]" : tradePlan.riskReward >= 1 ? "text-[var(--neon-yellow)]" : "text-[var(--neon-red)]"}`}>1:{tradePlan.riskReward.toFixed(1)}</span></span>
+                </div>
+                <RiskGauge score={riskScore} />
+              </div>
+            )}
           </div>
         </div>
       )}
