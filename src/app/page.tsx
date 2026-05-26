@@ -83,18 +83,7 @@ export default function Home() {
           <button onClick={() => {
               const newLang = lang === "zh-TW" ? "en" : "zh-TW";
               setLang(newLang);
-              if (data) {
-                setAnalysisLoading(true);
-                fetch("/api/analyze", {
-                  method: "POST",
-                  headers: { "Content-Type": "application/json" },
-                  body: JSON.stringify({ symbol: data.symbol, name: data.name, periods: data.periods, lang: newLang }),
-                }).then(r => r.json()).then(json => {
-                  setAnalysis(json.analysis || "");
-                  setLevels(json.levels || []);
-                  setTradePlan(json.tradePlan || null);
-                }).finally(() => setAnalysisLoading(false));
-              }
+              if (data) fetchAnalysis(data, newLang);
             }}
             className="px-2 py-1 text-xs border border-[rgba(0,240,255,0.3)] rounded text-[var(--text-secondary)] hover:text-[var(--neon-cyan)] transition-all">
             {lang === "zh-TW" ? "EN" : "中文"}
@@ -158,8 +147,8 @@ export default function Home() {
             <RiskGauge score={riskScore} />
           </div>
 
-          {/* Analysis Panel */}
-          <div className="lg:col-span-2">
+          {/* Analysis Panel - full width */}
+          <div className="lg:col-span-4">
             <AnalysisPanel analysis={analysis} levels={levels} tradePlan={tradePlan} loading={analysisLoading} />
           </div>
         </div>

@@ -28,7 +28,7 @@ export async function GET(req: NextRequest) {
           exchange: info?.listed_exchange || "",
           currency: info?.currency_id || "USD",
           periods: periods
-            .filter((p: { time?: number; open?: number; close?: number }) => p.time && p.open != null && p.close != null)
+            .filter((p: { time?: number; open?: number; close?: number; high?: number; low?: number }) => p.time && p.open != null && p.close != null && p.high && p.low)
             .map((p: { time: number; open: number; high: number; low: number; close: number; volume: number }) => ({
               time: p.time,
               open: +p.open || 0,
@@ -37,6 +37,7 @@ export async function GET(req: NextRequest) {
               close: +p.close || 0,
               volume: +p.volume || 0,
             }))
+            .filter((p: {high:number;low:number}) => p.high > 0 && p.low > 0)
             .sort((a: {time:number}, b: {time:number}) => a.time - b.time),
         });
       });
