@@ -4,53 +4,39 @@ import { useState, useEffect } from "react";
 interface MacroItem { price: number; change: number; changePct: number; name: string; }
 type MacroData = Record<string, MacroItem>;
 
-const LABELS: Record<string, { icon: string; warn?: (v: number) => boolean }> = {
-  vix: { icon: "⚡", warn: v => v > 25 },
-  dxy: { icon: "💵" },
-  us10y: { icon: "📈" },
-  us02y: { icon: "📊" },
-  spx: { icon: "🏛️" },
-  gold: { icon: "🥇" },
-};
-
 export default function MacroPanel() {
   const [data, setData] = useState<MacroData | null>(null);
-  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/macro").then(r => r.json()).then(d => { setData(d); setLoading(false); }).catch(() => setLoading(false));
+    fetch("/api/macro").then(r => r.json()).then(setData).catch(() => {});
   }, []);
 
-  if (loading) return <div className="glass-card p-3 animate-pulse h-full"><div className="h-3 bg-[rgba(0,240,255,0.1)] rounded w-1/2" /></div>;
   if (!data) return null;
 
+  const vix = data.vix?.price || 0;
+  const blackSwan = vix > 30;
+  const highAlert = vix > 25;
+
   return (
-    <div className="glass-card p-3">
-      <h3 className="text-sm font-bold text-[var(--neon-cyan)] mb-2">📊 總經概覽</h3>
-      <div className="grid grid-cols-3 gap-2">
+    <div className="shrink-0">
+      <div className="glass-card px-4 py-2 flex items-center gap-4 overflow-x-auto">
         {Object.entries(data).map(([key, item]) => {
-          if (!item || !item.price) return null;
+          if (!item?.price) return null;
           const isUp = item.change >= 0;
-          const warn = LABELS[key]?.warn?.(item.price);
+          const isVixHigh = key === "vix" && item.price > 25;
           return (
-            <div key={key} className={`p-2 rounded-lg border ${warn ? "border-[var(--neon-red)] bg-[rgba(255,51,102,0.05)]" : "border-[rgba(255,255,255,0.05)] bg-[rgba(255,255,255,0.02)]"}`}>
-              <div className="flex items-center gap-1 mb-0.5">
-                <span className="text-xs">{LABELS[key]?.icon}</span>
-                <span className="text-[11px] text-[var(--text-secondary)]">{item.name}</span>
-              </div>
-              <div className="text-sm font-mono font-bold">{item.price.toFixed(2)}</div>
-              <div className={`text-[11px] font-mono ${isUp ? "text-[var(--neon-green)]" : "text-[var(--neon-red)]"}`}>
-                {isUp ? "+" : ""}{item.changePct.toFixed(2)}%
-              </div>
+            <div key={key} className={`flex items-center gap-2 whitespace-nowrap ${isVixHigh ? "text-[var(--neon-red)]" : ""}`}>
+              <span className="text-xs text-[var(--text-secondary)]">{item.name}</span>
+              <span className="text-sm font-mono font-bold">{item.price.toFixed(2)}</span>
+              <span className={`text-xs font-mono ${isUp ? "text-[var(--neon-green)]" : "text-[var(--neon-red)]"}`}>
+                {isUp ? "▲" : "▼"}{Math.abs(item.changePct).toFixed(2)}%
+              </span>
             </div>
           );
         })}
+        {blackSwan && <span className="ml-auto text-xs font-bold text-[var(--neon-red)] animate-pulse">🦢 黑天鵝警報 VIX&gt;30</span>}
+        {!blackSwan && highAlert && <span className="ml-auto text-xs font-bold text-[var(--neon-yellow)]">⚠️ VIX偏高</span>}
       </div>
-      {data.vix && data.vix.price > 25 && (
-        <div className="mt-2 px-2 py-1 bg-[rgba(255,51,102,0.1)] border border-[var(--neon-red)] rounded text-xs text-[var(--neon-red)]">
-          ⚠️ VIX &gt; 25 — 市場恐慌情緒升高，注意風險
-        </div>
-      )}
     </div>
   );
 }
