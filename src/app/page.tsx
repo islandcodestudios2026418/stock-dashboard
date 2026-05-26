@@ -7,6 +7,7 @@ import IndicatorRadar from "@/components/IndicatorRadar";
 import RiskGauge from "@/components/RiskGauge";
 import AnalysisPanel from "@/components/AnalysisPanel";
 import MacroPanel from "@/components/MacroPanel";
+import SectorHeatmap from "@/components/SectorHeatmap";
 import { OHLCV, getIndicatorSummary, calcRiskScore } from "@/lib/indicators";
 import { PriceLevel, TradePlan } from "@/lib/levels";
 
@@ -78,6 +79,7 @@ export default function Home() {
 
       {/* Macro overview - always visible */}
       <MacroPanel />
+      <SectorHeatmap />
 
       {loading && (
         <div className="flex-1 flex items-center justify-center">
