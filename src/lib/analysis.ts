@@ -1,6 +1,13 @@
 import { OHLCV, getIndicatorSummary, calcBOLL, calcMACD, calcRSI, calcKDJ, calcSMA } from "./indicators";
 import { calcSupportResistance, calcTradePlan, PriceLevel, TradePlan } from "./levels";
 
+/** Format price with appropriate decimals based on magnitude */
+function fp(price: number): string {
+  if (price >= 100) return price.toFixed(0);
+  if (price >= 10) return price.toFixed(1);
+  return price.toFixed(2);
+}
+
 function getCandleBody(c: OHLCV) { return Math.abs(c.close - c.open); }
 function getCandleRange(c: OHLCV) { return c.high - c.low; }
 function getUpperShadow(c: OHLCV) { return c.high - Math.max(c.open, c.close); }
@@ -153,14 +160,14 @@ export function generateFullAnalysis(
     const manipPath = washPattern.isWash ? ["\u6025\u6BBA\u88FD\u9020\u6050\u614C", "\u6E05\u6D17\u69D3\u687F\u8CC7\u91D1", "\u58D3\u56DE\u5747\u7DDA\u9644\u8FD1", "\u6A6B\u76E4\u9707\u76EA\u5438\u7C4C", "\u518D\u6B21\u4E0A\u653B\u65B0\u9AD8"] : ["\u7DAD\u6301\u5340\u9593\u9707\u76EA", "\u9010\u6B65\u964D\u4F4E\u6210\u672C", "\u7B49\u5F85\u50AC\u5316\u5291", "\u5FEB\u901F\u62C9\u5347\u812B\u96E2\u6210\u672C\u5340", "\u9032\u5165\u4E3B\u5347\u6D6A"];
 
     const holderStrategy = riskScore >= 7
-      ? `\u6210\u672C\u82E5\u5728${(last.close * 0.95).toFixed(0)}\u9644\u8FD1\uFF0C\u4ECD\u5728\u4E3B\u529B\u6210\u672C\u4E0A\u65B9\u3002\n\u7B56\u7565\uFF1A\u7B49\u5F85${keySupport.toFixed(0)}\u652F\u6490\u78BA\u8A8D\n\u2460 ${keySupport.toFixed(0)}\u5B88\u4F4F\n\u2461 \u51FA\u73FE\u653E\u91CF\u53CD\u5305\n\u2462 ${macdConverging ? "MACD\u5373\u5C07\u91D1\u53C9" : "MACD\u91CD\u65B0\u91D1\u53C9"}\n\u76EE\u6A19\u4F4D\uFF1A${keyResistance.toFixed(0)} \u2192 ${(keyResistance + atr).toFixed(0)}+`
+      ? `\u6210\u672C\u82E5\u5728${fp(last.close * 0.95)}\u9644\u8FD1\uFF0C\u4ECD\u5728\u4E3B\u529B\u6210\u672C\u4E0A\u65B9\u3002\n\u7B56\u7565\uFF1A\u7B49\u5F85${fp(keySupport)}\u652F\u6490\u78BA\u8A8D\n\u2460 ${fp(keySupport)}\u5B88\u4F4F\n\u2461 \u51FA\u73FE\u653E\u91CF\u53CD\u5305\n\u2462 ${macdConverging ? "MACD\u5373\u5C07\u91D1\u53C9" : "MACD\u91CD\u65B0\u91D1\u53C9"}\n\u76EE\u6A19\u4F4D\uFF1A${fp(keyResistance)} \u2192 ${fp(keyResistance + atr)}+`
       : aboveMa
-      ? `\u8DA8\u52E2\u4ECD\u5728\uFF0C\u6301\u80A1\u5F85\u6F32\u3002\n\u7B56\u7565\uFF1A\u6CBF MA20\u6301\u6709\n\u2460 \u4E0D\u8DCC\u7834${keySupport.toFixed(0)}\u7E7C\u7E8C\u6301\u6709\n\u2461 \u8DCC\u7834${keySupport.toFixed(0)}\u6E1B\u534A\u5009\n\u2462 \u8DCC\u7834${sma20?.toFixed(0)}\u5168\u90E8\u96E2\u5834\n\u76EE\u6A19\u4F4D\uFF1A${keyResistance.toFixed(0)} \u2192 ${(keyResistance + atr).toFixed(0)}`
-      : `\u5DF2\u8DCC\u7834\u5747\u7DDA\uFF0C\u5EFA\u8B70\u6E1B\u5009\u89C0\u671B\u3002\n\u2460 \u89C0\u5BDF${keySupport.toFixed(0)}\u662F\u5426\u5B88\u4F4F\n\u2461 \u7B49\u5F85MACD\u91D1\u53C9\u78BA\u8A8D\n\u2462 \u78BA\u8A8D\u5F8C\u53EF\u88DC\u56DE\u5009\u4F4D`;
+      ? `\u8DA8\u52E2\u4ECD\u5728\uFF0C\u6301\u80A1\u5F85\u6F32\u3002\n\u7B56\u7565\uFF1A\u6CBF MA20\u6301\u6709\n\u2460 \u4E0D\u8DCC\u7834${fp(keySupport)}\u7E7C\u7E8C\u6301\u6709\n\u2461 \u8DCC\u7834${fp(keySupport)}\u6E1B\u534A\u5009\n\u2462 \u8DCC\u7834${fp(sma20 ?? 0)}\u5168\u90E8\u96E2\u5834\n\u76EE\u6A19\u4F4D\uFF1A${fp(keyResistance)} \u2192 ${fp(keyResistance + atr)}`
+      : `\u5DF2\u8DCC\u7834\u5747\u7DDA\uFF0C\u5EFA\u8B70\u6E1B\u5009\u89C0\u671B\u3002\n\u2460 \u89C0\u5BDF${fp(keySupport)}\u662F\u5426\u5B88\u4F4F\n\u2461 \u7B49\u5F85MACD\u91D1\u53C9\u78BA\u8A8D\n\u2462 \u78BA\u8A8D\u5F8C\u53EF\u88DC\u56DE\u5009\u4F4D`;
 
     const buyerStrategy = tradePlan
-      ? `\u6FC0\u9032\uFF1A${keySupport.toFixed(0)}\uFF5E${(keySupport + atr * 0.5).toFixed(0)} \u5340\u57DF\n\u7A69\u5065\uFF1A\u7B49\u91CD\u65B0\u7AD9\u56DE${sma20?.toFixed(0)}\u4EE5\u4E0A\n\u505C\u640D\uFF1A\u8DCC\u7834${tradePlan.stopLoss.toFixed(0)}\u78BA\u8A8D\u6709\u6548\n\u76EE\u6A19\uFF1A${tradePlan.target1.toFixed(0)} \u2192 ${tradePlan.target2.toFixed(0)}`
-      : `\u76EE\u524D\u4E0D\u5EFA\u8B70\u8FFD\u9AD8\n\u7B49\u56DE\u6E2C${keySupport.toFixed(0)}\u652F\u6490\u518D\u8003\u616E`;
+      ? `\u6FC0\u9032\uFF1A${fp(keySupport)}\uFF5E${fp(keySupport + atr * 0.5)} \u5340\u57DF\n\u7A69\u5065\uFF1A\u7B49\u91CD\u65B0\u7AD9\u56DE${fp(sma20 ?? 0)}\u4EE5\u4E0A\n\u505C\u640D\uFF1A\u8DCC\u7834${fp(tradePlan.stopLoss)}\u78BA\u8A8D\u6709\u6548\n\u76EE\u6A19\uFF1A${fp(tradePlan.target1)} \u2192 ${fp(tradePlan.target2)}`
+      : `\u76EE\u524D\u4E0D\u5EFA\u8B70\u8FFD\u9AD8\n\u7B49\u56DE\u6E2C${fp(keySupport)}\u652F\u6490\u518D\u8003\u616E`;
 
     const riskFactors: string[] = [];
     if (!macdBullish) riskFactors.push(`MACD${macdConverging ? "\u5373\u5C07" : "\u5DF2"}\u6B7B\u53C9`);
@@ -179,12 +186,12 @@ export function generateFullAnalysis(
 
     const probA = aboveMa ? 60 : 45;
     const probB = 100 - probA;
-    const scenarioA = aboveMa ? `${keySupport.toFixed(0)}\u4F01\u7A69 \u2192 \u6A6B\u76E42-4\u5929 \u2192 \u91CD\u8FD4${keyResistance.toFixed(0)} \u2192 \u518D\u885D${(keyResistance + atr).toFixed(0)}+` : `\u5728${keySupport.toFixed(0)}\u7372\u5F97\u652F\u6490 \u2192 \u53CD\u5F48\u81F3${sma20?.toFixed(0)} \u2192 \u7A81\u7834\u5F8C\u52A0\u901F`;
-    const scenarioB = aboveMa ? `\u8DCC\u7834${keySupport.toFixed(0)}\u4E14\u6536\u4E0D\u56DE \u2192 \u770B${(keySupport - atr).toFixed(0)} \u2192 ${(keySupport - atr * 1.5).toFixed(0)}\u9644\u8FD1` : `\u8DCC\u7834${keySupport.toFixed(0)} \u2192 \u9032\u5165\u4E2D\u671F\u8ABF\u6574 \u2192 \u770B${(keySupport - atr * 2).toFixed(0)}`;
+    const scenarioA = aboveMa ? `${fp(keySupport)}\u4F01\u7A69 \u2192 \u6A6B\u76E42-4\u5929 \u2192 \u91CD\u8FD4${fp(keyResistance)} \u2192 \u518D\u885D${fp(keyResistance + atr)}+` : `\u5728${fp(keySupport)}\u7372\u5F97\u652F\u6490 \u2192 \u53CD\u5F48\u81F3${fp(sma20 ?? 0)} \u2192 \u7A81\u7834\u5F8C\u52A0\u901F`;
+    const scenarioB = aboveMa ? `\u8DCC\u7834${fp(keySupport)}\u4E14\u6536\u4E0D\u56DE \u2192 \u770B${fp(keySupport - atr)} \u2192 ${fp(keySupport - atr * 1.5)}\u9644\u8FD1` : `\u8DCC\u7834${fp(keySupport)} \u2192 \u9032\u5165\u4E2D\u671F\u8ABF\u6574 \u2192 \u770B${fp(keySupport - atr * 2)}`;
 
-    const watchpoints = [`${keySupport.toFixed(0)}\uFF5E${(keySupport + atr * 0.3).toFixed(0)}\u652F\u6490\u5F37\u5EA6`, `\u91CF\u80FD\u8B8A\u5316\uFF08\u662F\u5426\u653E\u91CF\u53CD\u5305\uFF09`, `MACD\u80FD\u5426\u91D1\u53C9\u56DE\u96F6\u8EF8\u4E0A\u65B9`, `\u7D0D\u6307\u8D70\u52E2\u8207\u5E02\u5834\u60C5\u7DD2`];
+    const watchpoints = [`${fp(keySupport)}\uFF5E${fp(keySupport + atr * 0.3)}\u652F\u6490\u5F37\u5EA6`, `\u91CF\u80FD\u8B8A\u5316\uFF08\u662F\u5426\u653E\u91CF\u53CD\u5305\uFF09`, `MACD\u80FD\u5426\u91D1\u53C9\u56DE\u96F6\u8EF8\u4E0A\u65B9`, `\u7D0D\u6307\u8D70\u52E2\u8207\u5E02\u5834\u60C5\u7DD2`];
 
-    const stopLossNote = tradePlan ? `\u8DCC\u7834${tradePlan.stopLoss.toFixed(0)}\u78BA\u8A8D\u6709\u6548` : `\u8DCC\u7834${keySupport.toFixed(0)}\u78BA\u8A8D\u6709\u6548`;
+    const stopLossNote = tradePlan ? `\u8DCC\u7834${fp(tradePlan.stopLoss)}\u78BA\u8A8D\u6709\u6548` : `\u8DCC\u7834${fp(keySupport)}\u78BA\u8A8D\u6709\u6548`;
     const qualitativeChange = washPattern.isWash ? `\u7531\u6D17\u76E4 \u2192 \u8F49\u70BA\u4E2D\u7D1A\u8ABF\u6574` : `\u7531\u56DE\u8ABF \u2192 \u8F49\u70BA\u8DA8\u52E2\u53CD\u8F49`;
 
     return `## \u884C\u60C5\u8AAA\u660E
@@ -194,7 +201,7 @@ ${trendDetail}
 ${candleNarrative}
 ### \u77ED\u7DDA\u7D50\u69CB\uFF1A${shortStructure}
 ${macdConverging ? "DIF\u8207DEA\u9760\u8FD1\uFF0C\u5373\u5C07\u65B9\u5411\u9078\u64C7\u3002" : ""}\u7B2C\u4E00\u8F2A${isUp ? "\u7372\u5229" : "\u6050\u614C"}\u6BBA\u8DCC\u63A5\u8FD1\u5C3E\u8072\u3002
-### \u95DC\u9375\u652F\u6490\uFF1A${keySupport.toFixed(0)}\uFF5E${(keySupport + atr * 0.3).toFixed(0)}
+### \u95DC\u9375\u652F\u6490\uFF1A${fp(keySupport)}\uFF5E${fp(keySupport + atr * 0.3)}
 \u524D\u7A81\u7834\u5E73\u53F0+\u65E5\u7DDA\u6838\u5FC3\u652F\u6490+\u4E3B\u529B\u77ED\u7DDA\u9632\u5B88\u4F4D
 
 ## \u4E3B\u529B\u610F\u5716\uFF08\u6DF1\u5EA6\u89E3\u6790\uFF09
@@ -217,7 +224,7 @@ ${buyerStrategy}
 ### \u6B62\u640D\u8207\u98A8\u63A7
 ${stopLossNote}
 \u8CEA\u6027\u6539\u8B8A\uFF1A${qualitativeChange}
-\u56B4\u683C\u6B62\u640D\uFF1A\u8DCC\u7834${(keySupport - atr).toFixed(0)}\u6536\u76E4\u6B62\u640D
+\u56B4\u683C\u6B62\u640D\uFF1A\u8DCC\u7834${fp(keySupport - atr)}\u6536\u76E4\u6B62\u640D
 
 ## \u98A8\u96AA\u8A55\u4F30
 ### \u98A8\u96AA\u56E0\u7D20
@@ -260,10 +267,10 @@ ${"\u2588".repeat(Math.floor(controlLevel / 10))}${"\u2591".repeat(10 - Math.flo
 ## Trading Strategy
 ### Holding
 **${riskScore >= 7 ? "Don't panic sell" : aboveMa ? "Hold" : "Reduce"}**
-${aboveMa ? `Hold above ${keySupport.toFixed(0)}. Stop below ${sma20?.toFixed(0)}.` : `Watch ${keySupport.toFixed(0)} support.`}
-Targets: ${keyResistance.toFixed(0)} \u2192 ${(keyResistance + atr).toFixed(0)}
+${aboveMa ? `Hold above ${fp(keySupport)}. Stop below ${fp(sma20 ?? 0)}.` : `Watch ${fp(keySupport)} support.`}
+Targets: ${fp(keyResistance)} \u2192 ${fp(keyResistance + atr)}
 ### Adding
-${tradePlan ? `Entry: ${keySupport.toFixed(0)}\u301C${(keySupport + atr * 0.5).toFixed(0)}\nStop: ${tradePlan.stopLoss.toFixed(0)}\nTargets: ${tradePlan.target1.toFixed(0)} \u2192 ${tradePlan.target2.toFixed(0)}` : `Wait for ${keySupport.toFixed(0)} retest`}
+${tradePlan ? `Entry: ${fp(keySupport)}\u301C${fp(keySupport + atr * 0.5)}\nStop: ${fp(tradePlan.stopLoss)}\nTargets: ${fp(tradePlan.target1)} \u2192 ${fp(tradePlan.target2)}` : `Wait for ${fp(keySupport)} retest`}
 
 ## Risk
 ### Bearish
@@ -273,12 +280,12 @@ ${aboveMa ? "\u25CE Structure intact\n" : ""}${controlLevel > 60 ? `\u25CE ${con
 
 ## Scenarios
 ### A (${aboveMa ? 60 : 45}%) ${washPattern.isWash ? "Resume up" : "Support holds"}
-${keySupport.toFixed(0)} holds \u2192 ${keyResistance.toFixed(0)} \u2192 ${(keyResistance + atr).toFixed(0)}+
+${fp(keySupport)} holds \u2192 ${fp(keyResistance)} \u2192 ${fp(keyResistance + atr)}+
 ### B (${aboveMa ? 40 : 55}%) Correction
-Break ${keySupport.toFixed(0)} \u2192 ${(keySupport - atr).toFixed(0)} \u2192 ${(keySupport - atr * 1.5).toFixed(0)}
+Break ${fp(keySupport)} \u2192 ${fp(keySupport - atr)} \u2192 ${fp(keySupport - atr * 1.5)}
 
 ## Watchpoints
-\u2460 ${keySupport.toFixed(0)} support strength
+\u2460 ${fp(keySupport)} support strength
 \u2461 Volume reversal candle
 \u2462 MACD golden cross
 \u2463 Market sentiment`;
