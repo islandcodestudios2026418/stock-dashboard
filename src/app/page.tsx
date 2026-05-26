@@ -22,10 +22,6 @@ export default function Home() {
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [lang, setLang] = useState<"zh-TW" | "en">("zh-TW");
 
-  const t = lang === "zh-TW"
-    ? { title: "STOCK ANALYSIS", sub: "互動式技術面分析儀表板", search: "搜尋任何股票開始分析", support: "支援美股（NASDAQ:TSLA）和台股（TWSE:2330）", loading: "載入中...", chart: "K 線圖", err: "錯誤" }
-    : { title: "STOCK ANALYSIS", sub: "Interactive Technical Analysis Dashboard", search: "Search any stock to begin", support: "US stocks (NASDAQ:TSLA) and TW stocks (TWSE:2330)", loading: "Loading...", chart: "Chart", err: "Error" };
-
   const fetchAnalysis = useCallback(async (stockData: StockData, overrideLang?: string) => {
     setAnalysisLoading(true);
     try {
@@ -62,77 +58,108 @@ export default function Home() {
   const riskScore = data && data.periods.length > 20 ? calcRiskScore(data.periods) : 5;
 
   return (
-    <main className="h-screen flex flex-col p-3 gap-3 overflow-hidden">
+    <main className="h-screen flex flex-col p-4 gap-3 overflow-hidden">
       {/* Header */}
       <header className="flex items-center justify-between shrink-0">
-        <div>
-          <h1 className="text-lg font-bold tracking-tight leading-none">
-            <span className="text-[var(--neon-cyan)]">STOCK</span> ANALYSIS
-          </h1>
-          <p className="text-[10px] text-[var(--text-secondary)]">{t.sub}</p>
-        </div>
+        <h1 className="text-xl font-bold">
+          <span className="text-[var(--neon-cyan)]">STOCK</span> ANALYSIS
+        </h1>
         <div className="flex items-center gap-2">
-          <button onClick={() => {
-            const newLang = lang === "zh-TW" ? "en" : "zh-TW";
-            setLang(newLang);
-            if (data) fetchAnalysis(data, newLang);
-          }} className="px-2 py-1 text-[10px] border border-[rgba(0,240,255,0.3)] rounded text-[var(--text-secondary)] hover:text-[var(--neon-cyan)] transition-all">
+          <button onClick={() => { const n = lang === "zh-TW" ? "en" : "zh-TW"; setLang(n); if (data) fetchAnalysis(data, n); }}
+            className="px-2.5 py-1 text-xs border border-[rgba(0,240,255,0.3)] rounded text-[var(--text-secondary)] hover:text-[var(--neon-cyan)]">
             {lang === "zh-TW" ? "EN" : "中文"}
           </button>
           <SearchBar onSearch={fetchStock} loading={loading} />
         </div>
       </header>
 
-      {error && <div className="text-xs text-[var(--neon-red)] glass-card px-3 py-1.5 shrink-0">⚠️ {error}</div>}
+      {error && <div className="text-sm text-[var(--neon-red)] glass-card px-3 py-2 shrink-0">⚠️ {error}</div>}
 
-      {/* Loading */}
       {loading && (
         <div className="flex-1 flex items-center justify-center">
           <div className="w-6 h-6 border-2 border-[var(--neon-cyan)] border-t-transparent rounded-full animate-spin" />
-          <span className="ml-2 text-sm text-[var(--text-secondary)]">{t.loading}</span>
+          <span className="ml-2 text-[var(--text-secondary)]">載入中...</span>
         </div>
       )}
 
-      {/* Empty state */}
       {!data && !loading && (
         <div className="flex-1 flex flex-col items-center justify-center">
           <div className="text-5xl mb-3 opacity-20">📈</div>
-          <p className="text-sm text-[var(--text-secondary)]">{t.search}</p>
-          <p className="text-[10px] text-[var(--text-secondary)] mt-1">{t.support}</p>
+          <p className="text-base text-[var(--text-secondary)]">搜尋任何股票開始分析</p>
+          <p className="text-xs text-[var(--text-secondary)] mt-1">支援美股（NASDAQ:TSLA）和台股（TWSE:2330）</p>
         </div>
       )}
 
-      {/* Dashboard - fills remaining space, NO scroll */}
       {data && !loading && (
-        <div className="flex-1 grid grid-cols-12 grid-rows-[auto_1fr] gap-3 min-h-0">
-          {/* Row 1: Snapshot + Chart + Risk */}
-          <div className="col-span-2 row-span-2 flex flex-col gap-3 overflow-hidden">
+        <div className="flex-1 grid grid-cols-12 gap-3 min-h-0 overflow-hidden">
+          {/* LEFT: Snapshot + Indicators */}
+          <div className="col-span-2 flex flex-col gap-3 overflow-y-auto">
             <MarketSnapshot data={data.periods} name={data.name} symbol={data.symbol} />
             {indicators && <IndicatorRadar data={indicators} />}
-            <RiskGauge score={riskScore} />
           </div>
 
-          <div className="col-span-7 glass-card p-3 min-h-0">
-            <div className="flex items-center justify-between mb-2">
-              <h3 className="text-xs font-semibold text-[var(--neon-cyan)]">{t.chart} — {data.symbol}</h3>
-              <div className="flex gap-0.5">
-                {["1", "5", "15", "60", "1D", "1W"].map(tf => (
-                  <button key={tf} onClick={() => { setTimeframe(tf); fetchStock(data.symbol, tf); }}
-                    className={`px-1.5 py-0.5 text-[10px] rounded ${timeframe === tf
-                      ? "bg-[rgba(0,240,255,0.2)] text-[var(--neon-cyan)] border border-[var(--neon-cyan)]"
-                      : "text-[var(--text-secondary)] border border-transparent hover:text-[var(--text-primary)]"}`}>
-                    {tf}
-                  </button>
-                ))}
+          {/* CENTER: Chart (top) + Strategy highlight (bottom) */}
+          <div className="col-span-7 flex flex-col gap-3 min-h-0">
+            {/* Chart */}
+            <div className="glass-card p-3 flex-1 min-h-0 flex flex-col">
+              <div className="flex items-center justify-between mb-2 shrink-0">
+                <h3 className="text-sm font-semibold text-[var(--neon-cyan)]">K 線圖 — {data.symbol}</h3>
+                <div className="flex gap-1">
+                  {["1", "5", "15", "60", "1D", "1W"].map(tf => (
+                    <button key={tf} onClick={() => { setTimeframe(tf); fetchStock(data.symbol, tf); }}
+                      className={`px-2 py-0.5 text-xs rounded ${timeframe === tf
+                        ? "bg-[rgba(0,240,255,0.2)] text-[var(--neon-cyan)] border border-[var(--neon-cyan)]"
+                        : "text-[var(--text-secondary)] border border-transparent"}`}>
+                      {tf}
+                    </button>
+                  ))}
+                </div>
+              </div>
+              <div className="flex-1 min-h-0">
+                <CandlestickChart data={data.periods} />
               </div>
             </div>
-            <div className="h-[calc(100%-2rem)]">
-              <CandlestickChart data={data.periods} />
-            </div>
+
+            {/* STRATEGY HIGHLIGHT - below chart, prominent */}
+            {tradePlan && (
+              <div className="shrink-0 glass-card p-4 border-[var(--neon-yellow)] border-2 gradient-border">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-base font-bold text-[var(--neon-yellow)]">
+                    📋 {lang === "zh-TW" ? "今日操作建議" : "Today's Trade Plan"}
+                  </h3>
+                  <RiskGauge score={riskScore} />
+                </div>
+                <div className="grid grid-cols-4 gap-4 mt-3">
+                  <div className="text-center">
+                    <div className="text-xs text-[var(--text-secondary)] mb-1">{lang === "zh-TW" ? "停損" : "Stop"}</div>
+                    <div className="text-lg font-bold font-mono text-[var(--neon-red)]">{tradePlan.stopLoss.toFixed(2)}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-[var(--text-secondary)] mb-1">{lang === "zh-TW" ? "進場" : "Entry"}</div>
+                    <div className="text-lg font-bold font-mono text-[var(--text-primary)]">{tradePlan.entry.toFixed(2)}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-[var(--text-secondary)] mb-1">{lang === "zh-TW" ? "目標1" : "T1"}</div>
+                    <div className="text-lg font-bold font-mono text-[var(--neon-green)]">{tradePlan.target1.toFixed(2)}</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-xs text-[var(--text-secondary)] mb-1">{lang === "zh-TW" ? "目標2" : "T2"}</div>
+                    <div className="text-lg font-bold font-mono text-[var(--neon-green)]">{tradePlan.target2.toFixed(2)}</div>
+                  </div>
+                </div>
+                <div className="mt-2 text-center text-sm">
+                  <span className="text-[var(--text-secondary)]">{lang === "zh-TW" ? "風險報酬比" : "Risk:Reward"} </span>
+                  <span className={`font-bold text-base ${tradePlan.riskReward >= 2 ? "text-[var(--neon-green)]" : tradePlan.riskReward >= 1 ? "text-[var(--neon-yellow)]" : "text-[var(--neon-red)]"}`}>
+                    1:{tradePlan.riskReward.toFixed(1)} {tradePlan.riskReward >= 2 ? "✅" : tradePlan.riskReward >= 1 ? "⚠️" : "❌"}
+                  </span>
+                </div>
+              </div>
+            )}
           </div>
 
-          <div className="col-span-3 row-span-2 overflow-y-auto min-h-0">
-            <AnalysisPanel analysis={analysis} levels={levels} tradePlan={tradePlan} loading={analysisLoading} />
+          {/* RIGHT: Levels + Analysis */}
+          <div className="col-span-3 overflow-y-auto min-h-0">
+            <AnalysisPanel analysis={analysis} levels={levels} tradePlan={null} loading={analysisLoading} />
           </div>
         </div>
       )}
