@@ -27,18 +27,18 @@ export async function GET(req: NextRequest) {
           name: info?.short_description || info?.description || symbol,
           exchange: info?.listed_exchange || "",
           currency: info?.currency_id || "USD",
-          periods: periods
-            .filter((p: { time?: number; open?: number; close?: number; high?: number; low?: number }) => p.time && p.open != null && p.close != null && p.high && p.low)
-            .map((p: { time: number; open: number; high: number; low: number; close: number; volume: number }) => ({
-              time: p.time,
+          periods: (periods as unknown as Array<Record<string, number>>)
+            .filter(p => p.time && p.open != null && p.close != null)
+            .map(p => ({
+              time: +p.time,
               open: +p.open || 0,
-              high: +p.high || 0,
-              low: +p.low || 0,
+              high: +(p.max || p.high) || 0,
+              low: +(p.min || p.low) || 0,
               close: +p.close || 0,
               volume: +p.volume || 0,
             }))
-            .filter((p: {high:number;low:number}) => p.high > 0 && p.low > 0)
-            .sort((a: {time:number}, b: {time:number}) => a.time - b.time),
+            .filter(p => p.high > 0 && p.low > 0 && p.open > 0)
+            .sort((a, b) => a.time - b.time),
         });
       });
 

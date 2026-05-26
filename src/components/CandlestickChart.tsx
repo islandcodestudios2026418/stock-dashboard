@@ -24,7 +24,7 @@ export default function CandlestickChart({ data }: Props) {
       rightPriceScale: { borderColor: "rgba(0,240,255,0.2)" },
       timeScale: { borderColor: "rgba(0,240,255,0.2)", timeVisible: true },
       width: containerRef.current.clientWidth,
-      height: 400,
+      height: containerRef.current.clientHeight || 300,
     });
     chartRef.current = chart;
 
@@ -77,7 +77,7 @@ export default function CandlestickChart({ data }: Props) {
     chart.timeScale().fitContent();
 
     const handleResize = () => {
-      if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth });
+      if (containerRef.current) chart.applyOptions({ width: containerRef.current.clientWidth, height: containerRef.current.clientHeight || 300 });
     };
     window.addEventListener("resize", handleResize);
 
@@ -87,5 +87,5 @@ export default function CandlestickChart({ data }: Props) {
     };
   }, [data]);
 
-  return <div ref={containerRef} className="w-full h-[400px]" />;
+  return <div ref={containerRef} className="w-full h-full" />;
 }
