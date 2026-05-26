@@ -89,15 +89,14 @@ export default function Home() {
       )}
 
       {data && !loading && (
-        <div className="flex-1 grid grid-cols-12 grid-rows-[1fr_auto] gap-3 min-h-0 overflow-hidden">
+        <div className="flex-1 grid grid-cols-12 grid-rows-[55%_45%] gap-3 min-h-0 overflow-hidden">
 
-          {/* LEFT COL: Snapshot + Radar */}
-          <div className="col-span-2 row-span-2 flex flex-col gap-3 overflow-y-auto min-h-0">
+          {/* TOP-LEFT: Snapshot */}
+          <div className="col-span-2 row-span-1 overflow-y-auto">
             <MarketSnapshot data={data.periods} name={data.name} symbol={data.symbol} />
-            {indicators && <IndicatorRadar data={indicators} />}
           </div>
 
-          {/* CENTER: Chart - takes most vertical space */}
+          {/* TOP-CENTER: Chart */}
           <div className="col-span-7 row-span-1 glass-card p-3 flex flex-col min-h-0">
             <div className="flex items-center justify-between mb-1 shrink-0">
               <h3 className="text-sm font-semibold text-[var(--neon-cyan)]">{data.symbol}</h3>
@@ -117,26 +116,57 @@ export default function Home() {
             </div>
           </div>
 
-          {/* RIGHT COL: Analysis - scrollable */}
-          <div className="col-span-3 row-span-2 overflow-y-auto min-h-0">
-            <AnalysisPanel analysis={analysis} levels={levels} tradePlan={tradePlan} loading={analysisLoading} />
-          </div>
-
-          {/* BOTTOM CENTER: Trade Plan - compact single row */}
-          <div className="col-span-7 row-span-1 shrink-0">
+          {/* TOP-RIGHT: Trade Plan + Levels */}
+          <div className="col-span-3 row-span-1 flex flex-col gap-2 overflow-y-auto">
+            {/* Trade Plan - prominent */}
             {tradePlan && (
-              <div className="glass-card px-4 py-2 border border-[var(--neon-yellow)] flex items-center justify-between gap-4">
-                <span className="text-sm font-bold text-[var(--neon-yellow)] whitespace-nowrap">📋 {lang === "zh-TW" ? "操作建議" : "Trade Plan"}</span>
-                <div className="flex items-center gap-5 text-sm font-mono">
-                  <span><span className="text-[var(--text-secondary)] text-xs mr-1">{lang === "zh-TW" ? "停損" : "Stop"}</span><span className="text-[var(--neon-red)] font-bold">{tradePlan.stopLoss.toFixed(2)}</span></span>
-                  <span><span className="text-[var(--text-secondary)] text-xs mr-1">{lang === "zh-TW" ? "進場" : "Entry"}</span><span className="font-bold">{tradePlan.entry.toFixed(2)}</span></span>
-                  <span><span className="text-[var(--text-secondary)] text-xs mr-1">T1</span><span className="text-[var(--neon-green)] font-bold">{tradePlan.target1.toFixed(2)}</span></span>
-                  <span><span className="text-[var(--text-secondary)] text-xs mr-1">T2</span><span className="text-[var(--neon-green)] font-bold">{tradePlan.target2.toFixed(2)}</span></span>
-                  <span><span className="text-[var(--text-secondary)] text-xs mr-1">R:R</span><span className={`font-bold ${tradePlan.riskReward >= 2 ? "text-[var(--neon-green)]" : tradePlan.riskReward >= 1 ? "text-[var(--neon-yellow)]" : "text-[var(--neon-red)]"}`}>1:{tradePlan.riskReward.toFixed(1)}</span></span>
+              <div className="glass-card p-3 border border-[var(--neon-yellow)]">
+                <div className="flex items-center justify-between mb-2">
+                  <h3 className="text-sm font-bold text-[var(--neon-yellow)]">📋 {lang === "zh-TW" ? "操作建議" : "Trade Plan"}</h3>
+                  <RiskGauge score={riskScore} />
                 </div>
-                <RiskGauge score={riskScore} />
+                <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
+                  <div className="flex justify-between"><span className="text-[var(--text-secondary)]">停損</span><span className="font-mono font-bold text-[var(--neon-red)]">{tradePlan.stopLoss.toFixed(2)}</span></div>
+                  <div className="flex justify-between"><span className="text-[var(--text-secondary)]">進場</span><span className="font-mono font-bold">{tradePlan.entry.toFixed(2)}</span></div>
+                  <div className="flex justify-between"><span className="text-[var(--text-secondary)]">目標1</span><span className="font-mono font-bold text-[var(--neon-green)]">{tradePlan.target1.toFixed(2)}</span></div>
+                  <div className="flex justify-between"><span className="text-[var(--text-secondary)]">目標2</span><span className="font-mono font-bold text-[var(--neon-green)]">{tradePlan.target2.toFixed(2)}</span></div>
+                </div>
+                <div className="mt-1.5 text-sm text-center">
+                  <span className="text-[var(--text-secondary)]">R:R </span>
+                  <span className={`font-bold ${tradePlan.riskReward >= 2 ? "text-[var(--neon-green)]" : tradePlan.riskReward >= 1 ? "text-[var(--neon-yellow)]" : "text-[var(--neon-red)]"}`}>
+                    1:{tradePlan.riskReward.toFixed(1)} {tradePlan.riskReward >= 2 ? "✅" : tradePlan.riskReward >= 1 ? "⚠️" : "❌"}
+                  </span>
+                </div>
               </div>
             )}
+            {/* Levels */}
+            <div className="glass-card p-3">
+              <h3 className="text-sm font-bold text-[var(--neon-cyan)] mb-2">關鍵價位</h3>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <div className="text-xs text-[var(--neon-red)] font-medium mb-1">壓力 ▲</div>
+                  {levels.filter(l => l.type === "resistance").slice(0, 3).map((l, i) => (
+                    <div key={i} className="text-sm font-mono py-0.5">{l.price.toFixed(2)}</div>
+                  ))}
+                </div>
+                <div>
+                  <div className="text-xs text-[var(--neon-green)] font-medium mb-1">支撐 ▼</div>
+                  {levels.filter(l => l.type === "support").slice(0, 3).map((l, i) => (
+                    <div key={i} className="text-sm font-mono py-0.5">{l.price.toFixed(2)}</div>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* BOTTOM-LEFT: Indicator Radar */}
+          <div className="col-span-2 row-span-1 overflow-hidden">
+            {indicators && <IndicatorRadar data={indicators} />}
+          </div>
+
+          {/* BOTTOM-CENTER + RIGHT: Analysis cards in horizontal flow */}
+          <div className="col-span-10 row-span-1 min-h-0 overflow-hidden">
+            <AnalysisPanel analysis={analysis} levels={[]} tradePlan={null} loading={analysisLoading} />
           </div>
         </div>
       )}
