@@ -166,7 +166,7 @@ export function generateFullAnalysis(
       : `\u5DF2\u8DCC\u7834\u5747\u7DDA\uFF0C\u5EFA\u8B70\u6E1B\u5009\u89C0\u671B\u3002\n\u2460 \u89C0\u5BDF${fp(keySupport)}\u662F\u5426\u5B88\u4F4F\n\u2461 \u7B49\u5F85MACD\u91D1\u53C9\u78BA\u8A8D\n\u2462 \u78BA\u8A8D\u5F8C\u53EF\u88DC\u56DE\u5009\u4F4D`;
 
     const buyerStrategy = tradePlan
-      ? `\u6FC0\u9032\uFF1A${fp(keySupport)}\uFF5E${fp(keySupport + atr * 0.5)} \u5340\u57DF\n\u7A69\u5065\uFF1A\u7B49\u91CD\u65B0\u7AD9\u56DE${fp(sma20 ?? 0)}\u4EE5\u4E0A\n\u505C\u640D\uFF1A\u8DCC\u7834${fp(tradePlan.stopLoss)}\u78BA\u8A8D\u6709\u6548\n\u76EE\u6A19\uFF1A${fp(tradePlan.target1)} \u2192 ${fp(tradePlan.target2)}`
+      ? `\u6FC0\u9032\uFF1A${fp(keySupport)}\uFF5E${fp(keySupport + atr * 0.5)} \u5340\u57DF\n\u7A69\u5065\uFF1A\u7B49\u91CD\u65B0\u7AD9\u56DE${fp(sma20 ?? 0)}\u4EE5\u4E0A\n\u505C\u640D\uFF1A\u8DCC\u7834${fp(tradePlan.stopLoss)}\u78BA\u8A8D\u6709\u6548\n\u6B62\u76C8\uFF1A${fp(tradePlan.target1)}\uFF08\u8CE3\u534A\uFF09\u2192 ${fp(tradePlan.target2)}\uFF08\u6E05\u5009\uFF09`
       : `\u76EE\u524D\u4E0D\u5EFA\u8B70\u8FFD\u9AD8\n\u7B49\u56DE\u6E2C${fp(keySupport)}\u652F\u6490\u518D\u8003\u616E`;
 
     const riskFactors: string[] = [];
