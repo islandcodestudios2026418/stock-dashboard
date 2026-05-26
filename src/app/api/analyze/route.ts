@@ -261,7 +261,7 @@ function generateAnalysis(
     const holderStrategy = riskScore >= 7
       ? `成本若在${(last.close * 0.95).toFixed(0)}附近，仍在主力成本上方。\n策略：等待${keySupport.toFixed(0)}支撐確認\n① ${keySupport.toFixed(0)}守住\n② 出現放量反包\n③ ${macdConverging ? "MACD即將金叉" : "MACD重新金叉"}\n結果：大概率開啟第二波上攻\n目標位：${keyResistance.toFixed(0)} → ${(keyResistance + atr).toFixed(0)} → ${(keyResistance + atr * 2).toFixed(0)}+`
       : aboveMa
-      ? `趨勢仍在，持股待漲。\n策略：沿MA20持有\n① 不跌破${sma20?.toFixed(0)}繼續持有\n② 跌破${sma20?.toFixed(0)}減半倉\n③ 跌破${keySupport.toFixed(0)}全部離場\n目標位：${keyResistance.toFixed(0)} → ${(keyResistance + atr).toFixed(0)}`
+      ? `趨勢仍在，持股待漲。\n策略：沿MA20持有\n① 不跌破${keySupport.toFixed(0)}繼續持有\n② 跌破${keySupport.toFixed(0)}減半倉\n③ 跌破${sma20?.toFixed(0)}全部離場\n目標位：${keyResistance.toFixed(0)} → ${(keyResistance + atr).toFixed(0)}`
       : `已跌破均線，建議減倉觀望。\n策略：等待企穩信號\n① 觀察${keySupport.toFixed(0)}是否守住\n② 等待MACD金叉確認\n③ 確認後可補回倉位`;
 
     // Strategy for new buyers
