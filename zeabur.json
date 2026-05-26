@@ -1,0 +1,9 @@
+{
+  "build": {
+    "type": "nextjs"
+  },
+  "env": {
+    "TRADINGVIEW_SESSION": "${TRADINGVIEW_SESSION}",
+    "TRADINGVIEW_SIGNATURE": "${TRADINGVIEW_SIGNATURE}"
+  }
+}
