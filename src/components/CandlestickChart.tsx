@@ -14,6 +14,9 @@ export default function CandlestickChart({ data }: Props) {
   useEffect(() => {
     if (!containerRef.current || data.length === 0) return;
 
+    // Sort by time ascending (TradingView API may return unordered)
+    const sorted = [...data].sort((a, b) => a.time - b.time);
+
     const chart = createChart(containerRef.current, {
       layout: { background: { color: "transparent" }, textColor: "#8888aa" },
       grid: { vertLines: { color: "rgba(0,240,255,0.05)" }, horzLines: { color: "rgba(0,240,255,0.05)" } },
@@ -34,7 +37,7 @@ export default function CandlestickChart({ data }: Props) {
       wickUpColor: "#00ff88",
       wickDownColor: "#ff3366",
     });
-    const candles: CandlestickData<Time>[] = data.map(d => ({
+    const candles: CandlestickData<Time>[] = sorted.map(d => ({
       time: d.time as Time,
       open: d.open,
       high: d.high,
@@ -44,10 +47,10 @@ export default function CandlestickChart({ data }: Props) {
     candleSeries.setData(candles);
 
     // Bollinger Bands
-    const closes = data.map(d => d.close);
+    const closes = sorted.map(d => d.close);
     const boll = calcBOLL(closes);
 
-    const bollData = data.map((d, i) => ({ time: d.time as Time, mid: boll.mid[i], upper: boll.upper[i], lower: boll.lower[i] }))
+    const bollData = sorted.map((d, i) => ({ time: d.time as Time, mid: boll.mid[i], upper: boll.upper[i], lower: boll.lower[i] }))
       .filter(d => d.mid !== null);
 
     const bollMid = chart.addSeries(LineSeries, { color: "rgba(0,240,255,0.5)", lineWidth: 1 });
@@ -64,7 +67,7 @@ export default function CandlestickChart({ data }: Props) {
       priceScaleId: "volume",
     });
     chart.priceScale("volume").applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
-    const volumes: HistogramData<Time>[] = data.map(d => ({
+    const volumes: HistogramData<Time>[] = sorted.map(d => ({
       time: d.time as Time,
       value: d.volume,
       color: d.close >= d.open ? "rgba(0,255,136,0.3)" : "rgba(255,51,102,0.3)",

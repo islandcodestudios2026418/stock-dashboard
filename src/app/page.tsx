@@ -97,7 +97,7 @@ export default function Home() {
               }
             }}
             className="px-2 py-1 text-xs border border-[rgba(0,240,255,0.3)] rounded text-[var(--text-secondary)] hover:text-[var(--neon-cyan)] transition-all">
-            {lang === "zh-TW" ? "中文" : "EN"}
+            {lang === "zh-TW" ? "EN" : "中文"}
           </button>
           <SearchBar onSearch={fetchStock} loading={loading} />
         </div>

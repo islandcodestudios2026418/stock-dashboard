@@ -36,7 +36,8 @@ export async function GET(req: NextRequest) {
               low: +p.low || 0,
               close: +p.close || 0,
               volume: +p.volume || 0,
-            })),
+            }))
+            .sort((a: {time:number}, b: {time:number}) => a.time - b.time),
         });
       });
 
