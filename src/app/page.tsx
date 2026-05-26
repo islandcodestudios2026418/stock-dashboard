@@ -9,6 +9,8 @@ import AnalysisPanel from "@/components/AnalysisPanel";
 import MacroPanel from "@/components/MacroPanel";
 import SectorHeatmap from "@/components/SectorHeatmap";
 import Watchlist from "@/components/Watchlist";
+import FundamentalsPanel from "@/components/FundamentalsPanel";
+import NewsPanel from "@/components/NewsPanel";
 import { OHLCV, getIndicatorSummary, calcRiskScore } from "@/lib/indicators";
 import { PriceLevel, TradePlan } from "@/lib/levels";
 
@@ -165,6 +167,10 @@ export default function Home() {
                 </div>
               </div>
             </div>
+            {/* Fundamentals */}
+            <FundamentalsPanel symbol={data.symbol} lang={lang} />
+            {/* News */}
+            <NewsPanel symbol={data.symbol} lang={lang} />
           </div>
 
           {/* BOTTOM-LEFT: Indicator Radar */}
