@@ -5,7 +5,9 @@ import CandlestickChart from "@/components/CandlestickChart";
 import MarketSnapshot from "@/components/MarketSnapshot";
 import IndicatorRadar from "@/components/IndicatorRadar";
 import RiskGauge from "@/components/RiskGauge";
+import AnalysisPanel from "@/components/AnalysisPanel";
 import { OHLCV, getIndicatorSummary, calcRiskScore } from "@/lib/indicators";
+import { PriceLevel, TradePlan } from "@/lib/levels";
 
 interface StockData {
   symbol: string;
@@ -18,6 +20,11 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [timeframe, setTimeframe] = useState("1D");
+  const [analysis, setAnalysis] = useState("");
+  const [levels, setLevels] = useState<PriceLevel[]>([]);
+  const [tradePlan, setTradePlan] = useState<TradePlan | null>(null);
+  const [analysisLoading, setAnalysisLoading] = useState(false);
+  const [lang, setLang] = useState<"zh-TW" | "en">("zh-TW");
 
   const fetchStock = useCallback(async (symbol: string, tf?: string) => {
     setLoading(true);
@@ -26,13 +33,37 @@ export default function Home() {
       const res = await fetch(`/api/stock?symbol=${encodeURIComponent(symbol)}&timeframe=${tf || timeframe}`);
       const json = await res.json();
       if (json.error) throw new Error(json.error);
-      setData({ symbol: json.symbol || symbol, name: json.name || symbol, periods: json.periods });
+      const stockData = { symbol: json.symbol || symbol, name: json.name || symbol, periods: json.periods };
+      setData(stockData);
+
+      // Auto-trigger analysis
+      fetchAnalysis(stockData);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to fetch");
     } finally {
       setLoading(false);
     }
   }, [timeframe]);
+
+  const fetchAnalysis = async (stockData: StockData) => {
+    setAnalysisLoading(true);
+    try {
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: stockData.symbol, name: stockData.name, periods: stockData.periods, lang }),
+      });
+      const json = await res.json();
+      if (json.error) throw new Error(json.error);
+      setAnalysis(json.analysis);
+      setLevels(json.levels || []);
+      setTradePlan(json.tradePlan || null);
+    } catch {
+      setAnalysis("分析生成失敗");
+    } finally {
+      setAnalysisLoading(false);
+    }
+  };
 
   const indicators = data && data.periods.length > 20 ? getIndicatorSummary(data.periods) : null;
   const riskScore = data && data.periods.length > 20 ? calcRiskScore(data.periods) : 5;
@@ -48,7 +79,13 @@ export default function Home() {
           </h1>
           <p className="text-xs text-[var(--text-secondary)]">互動式技術面分析儀表板</p>
         </div>
-        <SearchBar onSearch={fetchStock} loading={loading} />
+        <div className="flex items-center gap-3">
+          <button onClick={() => setLang(l => l === "zh-TW" ? "en" : "zh-TW")}
+            className="px-2 py-1 text-xs border border-[rgba(0,240,255,0.3)] rounded text-[var(--text-secondary)] hover:text-[var(--neon-cyan)] transition-all">
+            {lang === "zh-TW" ? "中文" : "EN"}
+          </button>
+          <SearchBar onSearch={fetchStock} loading={loading} />
+        </div>
       </header>
 
       {/* Error */}
@@ -69,12 +106,12 @@ export default function Home() {
       {/* Dashboard */}
       {data && !loading && (
         <div className="grid grid-cols-1 lg:grid-cols-4 gap-4">
-          {/* Market Snapshot - left column */}
+          {/* Market Snapshot */}
           <div className="lg:col-span-1">
             <MarketSnapshot data={data.periods} name={data.name} symbol={data.symbol} />
           </div>
 
-          {/* Chart - main area */}
+          {/* Chart */}
           <div className="lg:col-span-3">
             <div className="glass-card p-4">
               <div className="flex items-center justify-between mb-3">
@@ -97,7 +134,7 @@ export default function Home() {
           </div>
 
           {/* Indicator Radar */}
-          <div className="lg:col-span-2">
+          <div className="lg:col-span-1">
             {indicators && <IndicatorRadar data={indicators} />}
           </div>
 
@@ -106,12 +143,9 @@ export default function Home() {
             <RiskGauge score={riskScore} />
           </div>
 
-          {/* AI Analysis placeholder */}
-          <div className="lg:col-span-1">
-            <div className="glass-card p-4 h-full">
-              <h3 className="text-sm font-semibold mb-2 text-[var(--neon-cyan)]">AI 行情分析</h3>
-              <p className="text-xs text-[var(--text-secondary)]">即將推出 — Claude AI 自動生成技術面分析（中/英文）</p>
-            </div>
+          {/* Analysis Panel */}
+          <div className="lg:col-span-2">
+            <AnalysisPanel analysis={analysis} levels={levels} tradePlan={tradePlan} loading={analysisLoading} />
           </div>
         </div>
       )}
