@@ -25,7 +25,7 @@ export default function IndicatorRadar({ data }: { data: IndicatorData }) {
   ];
 
   // Pentagon radar SVG
-  const cx = 80, cy = 80, r = 60;
+  const cx = 100, cy = 100, r = 75;
   const angles = indicators.map((_, i) => (i * 2 * Math.PI) / 5 - Math.PI / 2);
   const points = angles.map(a => [cx + r * Math.cos(a), cy + r * Math.sin(a)]);
   const valueR = indicators.map(ind => ind.status === "bullish" ? 0.9 : ind.status === "neutral" ? 0.55 : 0.25);
@@ -35,7 +35,7 @@ export default function IndicatorRadar({ data }: { data: IndicatorData }) {
     <div className="glass-card p-4">
       <h3 className="text-sm font-semibold mb-3 text-[var(--neon-cyan)]">關鍵指標雷達（日線）</h3>
       <div className="flex items-center gap-4">
-        <svg width="160" height="160" viewBox="0 0 160 160">
+        <svg width="200" height="200" viewBox="0 0 200 200">
           {/* Grid */}
           {[0.33, 0.66, 1].map(scale => (
             <polygon key={scale} points={angles.map(a => `${cx + r * scale * Math.cos(a)},${cy + r * scale * Math.sin(a)}`).join(" ")}
@@ -55,21 +55,21 @@ export default function IndicatorRadar({ data }: { data: IndicatorData }) {
           {/* Labels */}
           {points.map((p, i) => (
             <text key={i} x={p[0] + (p[0] > cx ? 5 : p[0] < cx ? -5 : 0)}
-              y={p[1] + (p[1] > cy ? 12 : p[1] < cy ? -5 : 0)}
-              textAnchor="middle" fontSize="9" fill="#8888aa">
+              y={p[1] + (p[1] > cy ? 14 : p[1] < cy ? -6 : 0)}
+              textAnchor="middle" fontSize="11" fill="#8888aa">
               {indicators[i].name}
             </text>
           ))}
         </svg>
-        <div className="flex flex-col gap-1.5 text-xs">
+        <div className="flex flex-col gap-2 text-sm">
           {indicators.map(ind => (
             <div key={ind.name} className="flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full" style={{ background: statusColor(ind.status) }} />
+              <span className="w-2.5 h-2.5 rounded-full" style={{ background: statusColor(ind.status) }} />
               <span className="text-[var(--text-secondary)]">{ind.name}</span>
               <span style={{ color: statusColor(ind.status) }}>{statusLabel(ind.status)}</span>
             </div>
           ))}
-          <div className="mt-2 text-[10px] text-[var(--text-secondary)]">
+          <div className="mt-2 text-xs text-[var(--text-secondary)]">
             <span className="inline-block w-2 h-2 rounded-full bg-[#00ff88] mr-1" />強勢(&gt;70)
             <span className="inline-block w-2 h-2 rounded-full bg-[#ffcc00] mr-1 ml-2" />中性(40-70)
             <span className="inline-block w-2 h-2 rounded-full bg-[#ff3366] mr-1 ml-2" />弱勢(&lt;40)
