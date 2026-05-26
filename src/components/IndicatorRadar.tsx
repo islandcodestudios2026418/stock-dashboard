@@ -60,11 +60,11 @@ export default function IndicatorRadar({ data }: { data: IndicatorData }) {
           </text>
         ))}
       </svg>
-      <div className="flex items-center justify-center gap-3 mt-2 text-xs">
+      <div className="flex items-center justify-center gap-4 mt-2 text-xs">
         {indicators.map(ind => (
-          <div key={ind.name} className="flex items-center gap-1">
-            <span className="w-2 h-2 rounded-full" style={{ background: statusColor(ind.status) }} />
-            <span style={{ color: statusColor(ind.status) }}>{statusLabel(ind.status)}</span>
+          <div key={ind.name} className="flex flex-col items-center gap-0.5">
+            <span className="text-[var(--text-secondary)]">{ind.name}</span>
+            <span className="font-medium" style={{ color: statusColor(ind.status) }}>{statusLabel(ind.status)}</span>
           </div>
         ))}
       </div>
