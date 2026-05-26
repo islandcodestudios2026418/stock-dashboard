@@ -25,7 +25,7 @@ export default function IndicatorRadar({ data }: { data: IndicatorData }) {
   ];
 
   // Pentagon radar SVG
-  const cx = 100, cy = 100, r = 75;
+  const cx = 130, cy = 130, r = 100;
   const angles = indicators.map((_, i) => (i * 2 * Math.PI) / 5 - Math.PI / 2);
   const points = angles.map(a => [cx + r * Math.cos(a), cy + r * Math.sin(a)]);
   const valueR = indicators.map(ind => ind.status === "bullish" ? 0.9 : ind.status === "neutral" ? 0.55 : 0.25);
@@ -35,7 +35,7 @@ export default function IndicatorRadar({ data }: { data: IndicatorData }) {
     <div className="glass-card p-4">
       <h3 className="text-sm font-semibold mb-3 text-[var(--neon-cyan)]">關鍵指標雷達（日線）</h3>
       <div className="flex items-center gap-4">
-        <svg width="200" height="200" viewBox="0 0 200 200">
+        <svg width="260" height="260" viewBox="0 0 260 260">
           {/* Grid */}
           {[0.33, 0.66, 1].map(scale => (
             <polygon key={scale} points={angles.map(a => `${cx + r * scale * Math.cos(a)},${cy + r * scale * Math.sin(a)}`).join(" ")}
