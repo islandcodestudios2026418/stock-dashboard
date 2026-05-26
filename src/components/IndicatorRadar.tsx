@@ -12,16 +12,17 @@ interface IndicatorData {
 const statusColor = (s: IndicatorStatus) =>
   s === "bullish" ? "#00ff88" : s === "bearish" ? "#ff3366" : "#ffcc00";
 
-const statusLabel = (s: IndicatorStatus) =>
-  s === "bullish" ? "多頭" : s === "bearish" ? "空頭" : "中性";
+const statusLabel = (s: IndicatorStatus, en: boolean) =>
+  s === "bullish" ? (en ? "Bull" : "\u591A\u982D") : s === "bearish" ? (en ? "Bear" : "\u7A7A\u982D") : (en ? "Neut" : "\u4E2D\u6027");
 
-export default function IndicatorRadar({ data }: { data: IndicatorData }) {
+export default function IndicatorRadar({ data, lang = "zh-TW" }: { data: IndicatorData; lang?: string }) {
+  const en = lang === "en";
   const indicators = [
     { name: "MACD", status: data.macd.status },
     { name: "RSI", status: data.rsi.status },
     { name: "KDJ", status: data.kdj.status },
-    { name: "均線", status: data.ma.status },
-    { name: "量能", status: data.volume.status },
+    { name: en ? "MA" : "\u5747\u7DDA", status: data.ma.status },
+    { name: en ? "Vol" : "\u91CF\u80FD", status: data.volume.status },
   ];
 
   // Pentagon radar SVG
@@ -33,7 +34,7 @@ export default function IndicatorRadar({ data }: { data: IndicatorData }) {
 
   return (
     <div className="glass-card p-4">
-      <h3 className="text-base font-semibold mb-2 text-[var(--neon-cyan)]">關鍵指標雷達（日線）</h3>
+      <h3 className="text-base font-semibold mb-2 text-[var(--neon-cyan)]">{en ? "Indicator Radar (Daily)" : "\u95DC\u9375\u6307\u6A19\u96F7\u9054\uFF08\u65E5\u7DDA\uFF09"}</h3>
       <svg width="100%" height="200" viewBox="0 0 240 200" className="mx-auto">
         {/* Grid */}
         {[0.33, 0.66, 1].map(scale => (
@@ -64,7 +65,7 @@ export default function IndicatorRadar({ data }: { data: IndicatorData }) {
         {indicators.map(ind => (
           <div key={ind.name} className="flex flex-col items-center gap-0.5">
             <span className="text-[var(--text-secondary)]">{ind.name}</span>
-            <span className="font-bold" style={{ color: statusColor(ind.status) }}>{statusLabel(ind.status)}</span>
+            <span className="font-bold" style={{ color: statusColor(ind.status) }}>{statusLabel(ind.status, en)}</span>
           </div>
         ))}
       </div>

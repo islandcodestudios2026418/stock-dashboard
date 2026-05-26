@@ -80,8 +80,8 @@ export default function Home() {
       {error && <div className="text-sm text-[var(--neon-red)] glass-card px-3 py-2 shrink-0">⚠️ {error}</div>}
 
       {/* Macro overview - always visible */}
-      <MacroPanel />
-      <SectorHeatmap />
+      <MacroPanel lang={lang} />
+      <SectorHeatmap lang={lang} />
 
       {loading && (
         <div className="flex-1 flex items-center justify-center">
@@ -92,7 +92,7 @@ export default function Home() {
       {!data && !loading && (
         <div className="flex-1 flex flex-col items-center justify-center">
           <div className="text-5xl mb-3 opacity-20">📈</div>
-          <p className="text-base text-[var(--text-secondary)]">搜尋任何股票開始分析</p>
+          <p className="text-base text-[var(--text-secondary)]">{lang === "en" ? "Search any stock to begin analysis" : "\u641C\u5C0B\u4EFB\u4F55\u80A1\u7968\u958B\u59CB\u5206\u6790"}</p>
         </div>
       )}
 
@@ -101,7 +101,7 @@ export default function Home() {
 
           {/* TOP-LEFT: Snapshot */}
           <div className="col-span-2 row-span-1 overflow-y-auto">
-            <MarketSnapshot data={data.periods} name={data.name} symbol={data.symbol} />
+            <MarketSnapshot data={data.periods} name={data.name} symbol={data.symbol} lang={lang} />
           </div>
 
           {/* TOP-CENTER: Chart */}
@@ -131,13 +131,13 @@ export default function Home() {
               <div className="glass-card p-3 border border-[var(--neon-yellow)]">
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-sm font-bold text-[var(--neon-yellow)]">📋 {lang === "zh-TW" ? "操作建議" : "Trade Plan"}</h3>
-                  <RiskGauge score={riskScore} />
+                  <RiskGauge score={riskScore} lang={lang} />
                 </div>
                 <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-sm">
-                  <div className="flex justify-between"><span className="text-[var(--text-secondary)]">停損</span><span className="font-mono font-bold text-[var(--neon-red)]">{tradePlan.stopLoss.toFixed(2)}</span></div>
-                  <div className="flex justify-between"><span className="text-[var(--text-secondary)]">進場</span><span className="font-mono font-bold">{tradePlan.entry.toFixed(2)}</span></div>
-                  <div className="flex justify-between"><span className="text-[var(--text-secondary)]">目標1</span><span className="font-mono font-bold text-[var(--neon-green)]">{tradePlan.target1.toFixed(2)}</span></div>
-                  <div className="flex justify-between"><span className="text-[var(--text-secondary)]">目標2</span><span className="font-mono font-bold text-[var(--neon-green)]">{tradePlan.target2.toFixed(2)}</span></div>
+                  <div className="flex justify-between"><span className="text-[var(--text-secondary)]">{lang === "en" ? "Stop" : "\u505C\u640D"}</span><span className="font-mono font-bold text-[var(--neon-red)]">{tradePlan.stopLoss.toFixed(2)}</span></div>
+                  <div className="flex justify-between"><span className="text-[var(--text-secondary)]">{lang === "en" ? "Entry" : "\u9032\u5834"}</span><span className="font-mono font-bold">{tradePlan.entry.toFixed(2)}</span></div>
+                  <div className="flex justify-between"><span className="text-[var(--text-secondary)]">{lang === "en" ? "Target1" : "\u76EE\u6A191"}</span><span className="font-mono font-bold text-[var(--neon-green)]">{tradePlan.target1.toFixed(2)}</span></div>
+                  <div className="flex justify-between"><span className="text-[var(--text-secondary)]">{lang === "en" ? "Target2" : "\u76EE\u6A192"}</span><span className="font-mono font-bold text-[var(--neon-green)]">{tradePlan.target2.toFixed(2)}</span></div>
                 </div>
                 <div className="mt-1.5 text-sm text-center">
                   <span className="text-[var(--text-secondary)]">R:R </span>
@@ -149,16 +149,16 @@ export default function Home() {
             )}
             {/* Levels */}
             <div className="glass-card p-3">
-              <h3 className="text-sm font-bold text-[var(--neon-cyan)] mb-2">關鍵價位</h3>
+              <h3 className="text-sm font-bold text-[var(--neon-cyan)] mb-2">{lang === "en" ? "Key Levels" : "\u95DC\u9375\u50F9\u4F4D"}</h3>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <div className="text-xs text-[var(--neon-red)] font-medium mb-1">壓力 ▲</div>
+                  <div className="text-xs text-[var(--neon-red)] font-medium mb-1">{lang === "en" ? "Resist \u25B2" : "\u58D3\u529B \u25B2"}</div>
                   {levels.filter(l => l.type === "resistance").slice(0, 3).map((l, i) => (
                     <div key={i} className="text-sm font-mono py-0.5">{l.price.toFixed(2)}</div>
                   ))}
                 </div>
                 <div>
-                  <div className="text-xs text-[var(--neon-green)] font-medium mb-1">支撐 ▼</div>
+                  <div className="text-xs text-[var(--neon-green)] font-medium mb-1">{lang === "en" ? "Support \u25BC" : "\u652F\u6490 \u25BC"}</div>
                   {levels.filter(l => l.type === "support").slice(0, 3).map((l, i) => (
                     <div key={i} className="text-sm font-mono py-0.5">{l.price.toFixed(2)}</div>
                   ))}
@@ -169,7 +169,7 @@ export default function Home() {
 
           {/* BOTTOM-LEFT: Indicator Radar */}
           <div className="col-span-2 row-span-1 overflow-hidden">
-            {indicators && <IndicatorRadar data={indicators} />}
+            {indicators && <IndicatorRadar data={indicators} lang={lang} />}
           </div>
 
           {/* BOTTOM-CENTER + RIGHT: Analysis cards in horizontal flow */}

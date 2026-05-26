@@ -1,8 +1,9 @@
 "use client";
 
-export default function RiskGauge({ score }: { score: number }) {
+export default function RiskGauge({ score, lang = "zh-TW" }: { score: number; lang?: string }) {
   const color = score <= 3 ? "#00ff88" : score <= 5 ? "#ffcc00" : score <= 7 ? "#ff8800" : "#ff3366";
-  const label = score <= 3 ? "低風險" : score <= 5 ? "中等風險" : score <= 7 ? "中高風險" : "高風險";
+  const en = lang === "en";
+  const label = score <= 3 ? (en ? "Low" : "\u4F4E\u98A8\u96AA") : score <= 5 ? (en ? "Medium" : "\u4E2D\u7B49\u98A8\u96AA") : score <= 7 ? (en ? "Med-High" : "\u4E2D\u9AD8\u98A8\u96AA") : (en ? "High" : "\u9AD8\u98A8\u96AA");
 
   return (
     <div className="flex items-center gap-3">
