@@ -259,14 +259,14 @@ function generateAnalysis(
 
     // Strategy for holders
     const holderStrategy = riskScore >= 7
-      ? `你的成本若在${(last.close * 0.95).toFixed(0)}附近，仍在主力成本上方。\n\n策略：等待${keySupport.toFixed(0)}支撐確認\n① ${keySupport.toFixed(0)}守住\n② 出現放量量反包\n③ ${macdConverging ? "MACD即將金叉" : "MACD重新金叉"}\n\n結果：大概率開啟第二波上攻\n目標位：${keyResistance.toFixed(0)} → ${(keyResistance + atr).toFixed(0)} → ${(keyResistance + atr * 2).toFixed(0)}+`
+      ? `成本若在${(last.close * 0.95).toFixed(0)}附近，仍在主力成本上方。\n策略：等待${keySupport.toFixed(0)}支撐確認\n① ${keySupport.toFixed(0)}守住\n② 出現放量反包\n③ ${macdConverging ? "MACD即將金叉" : "MACD重新金叉"}\n結果：大概率開啟第二波上攻\n目標位：${keyResistance.toFixed(0)} → ${(keyResistance + atr).toFixed(0)} → ${(keyResistance + atr * 2).toFixed(0)}+`
       : aboveMa
-      ? `趨勢仍在，持股待漲。\n\n策略：沿MA20持有\n① 不跌破${sma20?.toFixed(0)}繼續持有\n② 跌破${sma20?.toFixed(0)}減半倉\n③ 跌破${keySupport.toFixed(0)}全部離場\n\n目標位：${keyResistance.toFixed(0)} → ${(keyResistance + atr).toFixed(0)}`
-      : `已跌破均線，建議減倉觀望。\n\n策略：等待企穩信號\n① 觀察${keySupport.toFixed(0)}是否守住\n② 等待MACD金叉確認\n③ 確認後可補回倉位`;
+      ? `趨勢仍在，持股待漲。\n策略：沿MA20持有\n① 不跌破${sma20?.toFixed(0)}繼續持有\n② 跌破${sma20?.toFixed(0)}減半倉\n③ 跌破${keySupport.toFixed(0)}全部離場\n目標位：${keyResistance.toFixed(0)} → ${(keyResistance + atr).toFixed(0)}`
+      : `已跌破均線，建議減倉觀望。\n策略：等待企穩信號\n① 觀察${keySupport.toFixed(0)}是否守住\n② 等待MACD金叉確認\n③ 確認後可補回倉位`;
 
     // Strategy for new buyers
     const buyerStrategy = tradePlan
-      ? `更好位置：\n\n激進：${keySupport.toFixed(0)} ～ ${(keySupport + atr * 0.5).toFixed(0)} 區域\n穩健：等重新站回${sma20?.toFixed(0)}以上\n再右側跟隨\n\n停損：跌破${tradePlan.stopLoss.toFixed(0)}確認有效\n且連續收不回來\n\n目標位：\n${tradePlan.target1.toFixed(0)} → ${tradePlan.target2.toFixed(0)}`
+      ? `激進：${keySupport.toFixed(0)}～${(keySupport + atr * 0.5).toFixed(0)} 區域\n穩健：等重新站回${sma20?.toFixed(0)}以上\n停損：跌破${tradePlan.stopLoss.toFixed(0)}確認有效\n目標：${tradePlan.target1.toFixed(0)} → ${tradePlan.target2.toFixed(0)}`
       : `目前不建議追高\n等回測${keySupport.toFixed(0)}支撐再考慮`;
 
     // Risk factors (bearish)
@@ -320,27 +320,21 @@ function generateAnalysis(
     return `## 行情說明
 ### 大趨勢：${trend}
 ${trendDetail}
-
 ### 今日K線性質：${candleChar}
 ${candleNarrative}
-
 ### 短線結構：${shortStructure}
-${macdConverging ? "DIF與DEA逐漸靠近，即將出現方向選擇。" : ""}第一輪${isUp ? "獲利" : "恐慌"}殺跌接近尾聲。
-
+${macdConverging ? "DIF與DEA靠近，即將方向選擇。" : ""}第一輪${isUp ? "獲利" : "恐慌"}殺跌接近尾聲。
 ### 關鍵支撐：${keySupport.toFixed(0)}～${(keySupport + atr * 0.3).toFixed(0)}
-前突破平台 + 日線核心支撐 + 主力短線防守位，決定後續方向。
+前突破平台+日線核心支撐+主力短線防守位
 
 ## 主力意圖（深度解析）
 ### 主力核心目標
 ${instGoals.map(g => `- ${g}`).join("\n")}
-
 ### 洗盤特徵
-${washPattern.characteristics.length > 0 ? washPattern.characteristics.map((c, i) => `① ${c}`).join("\n") : "① 目前無明顯洗盤特徵\n② 正常市場波動"}
+${washPattern.characteristics.length > 0 ? washPattern.characteristics.map((c) => `① ${c}`).join("\n") : "① 無明顯洗盤特徵"}
 - 節奏可控
-
 ### 主力操作路徑
-${manipPath.map((p, i) => `① ${p}`).join("\n")}
-
+${manipPath.map((p) => `① ${p}`).join("\n")}
 ### 主力控盤程度
 ${"█".repeat(Math.floor(controlLevel / 10))}${"░".repeat(10 - Math.floor(controlLevel / 10))} ${controlLevel > 70 ? "較強" : controlLevel > 50 ? "中等" : "偏弱"} ${controlLevel}%
 ${controlLevel > 60 ? "籌碼鎖定較好，仍以多頭控盤為主" : "籌碼較為分散，方向待確認"}
@@ -348,40 +342,26 @@ ${controlLevel > 60 ? "籌碼鎖定較好，仍以多頭控盤為主" : "籌碼�
 ## 交易策略建議
 ### 情況1：已持倉
 **${riskScore >= 7 ? "不建議恐慌割肉" : aboveMa ? "持股待漲" : "減倉觀望"}**
-
 ${holderStrategy}
-
 ### 情況2：想加倉
 **${riskScore >= 7 ? "不適合追著補" : "等待更好位置"}**
-
 ${buyerStrategy}
-
 ### 止損與風控
 ${stopLossNote}
-
-質性改變：
-${qualitativeChange}
-
-下方目標位：
-${supports.slice(0, 3).map(s => s.price.toFixed(0)).join(" → ")}
-
+質性改變：${qualitativeChange}
 嚴格止損：跌破${(keySupport - atr).toFixed(0)}收盤止損
 
 ## 風險評估
 ### 風險因素
 ${riskFactors.map(f => `● ${f}`).join("\n")}
-
 ### 但未到牛轉熊
 ${bullFactors.map(f => `◎ ${f}`).join("\n")}
 
-## 未來可能劇本
-### 劇本A（機率${probA}%）
-${washPattern.isWash ? "洗盤後繼續上攻" : isUp ? "突破後加速" : "支撐反彈"}
+## 未來劇本
+### 劇本A（${probA}%）${washPattern.isWash ? "洗盤後上攻" : isUp ? "突破加速" : "支撐反彈"}
 ${scenarioA}
 ${probA >= 55 ? "★★★★☆" : "★★★☆☆"}
-
-### 劇本B（機率${probB}%）
-${!washPattern.isWash && !isUp ? "跌破支撐，進入調整" : "回調加深"}
+### 劇本B（${probB}%）${!washPattern.isWash && !isUp ? "跌破支撐" : "回調加深"}
 ${scenarioB}
 ${probB >= 45 ? "★★★☆☆" : "★★☆☆☆"}
 
@@ -407,77 +387,50 @@ ${watchpoints.map((w, i) => `① ${w}`).join("\n")}`;
 
   return `## Market Narrative
 ### Big Picture: ${trendEn}
-Price ${aboveMa ? "above" : "below"} MA20 (${sma20?.toFixed(2)}). Bollinger mid-band ${aboveMa ? "still pointing up" : "flattening/turning down"}. MACD ${macdBullish ? "bullish" : "bearish"}, ${macdDif > 0 ? "above" : "below"} zero line.
-
+Price ${aboveMa ? "above" : "below"} MA20 (${sma20?.toFixed(2)}). MACD ${macdBullish ? "bullish" : "bearish"}, ${macdDif > 0 ? "above" : "below"} zero line.
 ### Today's Candle: ${candleCharEn}
 ${candleNarrativeEn}
-
-### Short-term Structure: ${shortStructureEn}
-${macdConverging ? "DIF and DEA converging — direction decision imminent." : ""} First wave of ${isUp ? "profit-taking" : "panic"} selling nearing exhaustion.
-
+### Short-term: ${shortStructureEn}
+${macdConverging ? "DIF/DEA converging." : ""}First wave of ${isUp ? "profit-taking" : "panic"} nearing exhaustion.
 ### Key Support: ${keySupport.toFixed(2)}～${(keySupport + atr * 0.3).toFixed(2)}
-Prior breakout platform + daily core support + institutional defense zone.
 
-## Institutional Intent (Deep Analysis)
+## Institutional Intent
 ### Core Objectives
 ${washPattern.isWash ? "- Flush leveraged positions\n- Reduce floating shares\n- Prepare for next leg up" : volExpanding && isUp ? "- Active accumulation\n- Break key resistance\n- Attract momentum traders" : "- Control pace and timing\n- Maintain range\n- Exhaust retail patience"}
-
 ### ${washPattern.isWash ? "Wash" : "Market"} Characteristics
-${washPattern.characteristics.length > 0 ? washPattern.characteristics.map((c, i) => `${i+1}. ${c}`).join("\n") : "1. Normal market fluctuation\n2. No clear manipulation pattern"}
-
+${washPattern.characteristics.length > 0 ? washPattern.characteristics.map((c, i) => `${i+1}. ${c}`).join("\n") : "1. Normal fluctuation"}
 ### Manipulation Path
-1. ${washPattern.isWash ? "Sharp drop to create panic" : "Accumulate at support"}
-2. ${washPattern.isWash ? "Flush leveraged longs" : "Test resistance"}
-3. ${washPattern.isWash ? "Push back to moving averages" : "Consolidate gains"}
-4. ${washPattern.isWash ? "Sideways accumulation" : "Break out with volume"}
-5. ${washPattern.isWash ? "Launch next leg up" : "Distribute at highs"}
-
-### Control Level: ${controlLevel}%
+① ${washPattern.isWash ? "Sharp drop → panic" : "Accumulate at support"}
+② ${washPattern.isWash ? "Flush leveraged longs" : "Test resistance"}
+③ ${washPattern.isWash ? "Push back to MAs" : "Consolidate gains"}
+④ ${washPattern.isWash ? "Sideways accumulation" : "Break out with volume"}
+⑤ ${washPattern.isWash ? "Launch next leg up" : "Distribute at highs"}
+### Control: ${controlLevel}%
 ${"█".repeat(Math.floor(controlLevel / 10))}${"░".repeat(10 - Math.floor(controlLevel / 10))} ${controlLevel > 70 ? "Strong" : controlLevel > 50 ? "Moderate" : "Weak"}
-${controlLevel > 60 ? "Shares well locked up, bulls still in control" : "Shares dispersed, direction uncertain"}
 
 ## Trading Strategy
-### Situation 1: Already Holding
+### Already Holding
 **${riskScore >= 7 ? "Don't panic sell" : aboveMa ? "Hold with trend" : "Consider reducing"}**
-
-${riskScore >= 7 ? `Your cost basis likely near ${(last.close * 0.95).toFixed(0)}, still above institutional cost.\n\nStrategy: Wait for ${keySupport.toFixed(0)} support confirmation\n① Hold ${keySupport.toFixed(0)}\n② Watch for volume reversal candle\n③ ${macdConverging ? "MACD about to golden cross" : "Wait for MACD golden cross"}\n\nLikely outcome: Second wave up\nTargets: ${keyResistance.toFixed(0)} → ${(keyResistance + atr).toFixed(0)} → ${(keyResistance + atr * 2).toFixed(0)}+` : `Trend intact. Hold along MA20.\nStop below ${keySupport.toFixed(0)}`}
-
-### Situation 2: Want to Add
+${riskScore >= 7 ? `Cost near ${(last.close * 0.95).toFixed(0)}, above institutional cost.\n① Hold ${keySupport.toFixed(0)}\n② Watch for volume reversal\n③ ${macdConverging ? "MACD about to golden cross" : "Wait for MACD golden cross"}\nTargets: ${keyResistance.toFixed(0)} → ${(keyResistance + atr).toFixed(0)}+` : `Hold along MA20. Stop below ${keySupport.toFixed(0)}`}
+### Want to Add
 **${riskScore >= 7 ? "Not ideal to chase" : "Wait for better entry"}**
-
-${tradePlan ? `Aggressive: ${keySupport.toFixed(0)}～${(keySupport + atr * 0.5).toFixed(0)} zone\nConservative: Wait for price to reclaim ${sma20?.toFixed(0)}\n\nStop: Below ${tradePlan.stopLoss.toFixed(0)} (confirmed)\nTargets: ${tradePlan.target1.toFixed(0)} → ${tradePlan.target2.toFixed(0)}` : `Wait for support retest at ${keySupport.toFixed(0)}`}
-
-### Stop Loss & Risk Control
-Break below ${(keySupport - atr).toFixed(0)} on close = hard stop
-
-Qualitative change: ${washPattern.isWash ? "From shakeout → to real correction" : "From pullback → to trend reversal"}
+${tradePlan ? `Aggressive: ${keySupport.toFixed(0)}～${(keySupport + atr * 0.5).toFixed(0)}\nConservative: Reclaim ${sma20?.toFixed(0)}\nStop: ${tradePlan.stopLoss.toFixed(0)}\nTargets: ${tradePlan.target1.toFixed(0)} → ${tradePlan.target2.toFixed(0)}` : `Wait for retest at ${keySupport.toFixed(0)}`}
+### Stop Loss
+Hard stop: below ${(keySupport - atr).toFixed(0)} on close
+Change: ${washPattern.isWash ? "Shakeout → real correction" : "Pullback → trend reversal"}
 
 ## Risk Assessment
 ### Bearish Factors
-${riskScore >= 7 ? "● Elevated overall risk" : ""}
-${!macdBullish ? "● MACD bearish cross" : ""}
-${!aboveMa ? "● Below key moving average" : ""}
-${volExpanding && !isUp ? "● Volume spike on decline" : ""}
-${lastRsi > 75 ? "● RSI overbought" : ""}
-● Short-term profit-taking pressure
-
-### But Not Yet Bear Market
-${aboveMa ? "◎ Daily structure not broken" : ""}
-${sma60 && last.close > sma60 ? "◎ Institutional cost zone still below" : ""}
-${controlLevel > 60 ? `◎ Shares well locked (${controlLevel}% control)` : ""}
-${macdDif > 0 ? "◎ MACD still above zero line" : ""}
-${washPattern.isWash ? "◎ Shakeout pattern, not real selling" : ""}
-◎ Long-term moving averages still intact
+${riskScore >= 7 ? "● Elevated overall risk\n" : ""}${!macdBullish ? "● MACD bearish cross\n" : ""}${!aboveMa ? "● Below key MA\n" : ""}${volExpanding && !isUp ? "● Volume spike on decline\n" : ""}${lastRsi > 75 ? "● RSI overbought\n" : ""}● Profit-taking pressure
+### But Not Yet Bear
+${aboveMa ? "◎ Daily structure intact\n" : ""}${sma60 && last.close > sma60 ? "◎ Institutional cost below\n" : ""}${controlLevel > 60 ? `◎ ${controlLevel}% control\n` : ""}${macdDif > 0 ? "◎ MACD above zero\n" : ""}◎ Long-term MAs intact
 
 ## Future Scenarios
-### Scenario A (${aboveMa ? 60 : 45}% probability)
-${washPattern.isWash ? "Shakeout complete → resume uptrend" : "Support holds → bounce"}
-${keySupport.toFixed(0)} holds → consolidate 2-4 days → retest ${keyResistance.toFixed(0)} → push to ${(keyResistance + atr).toFixed(0)}+
+### A (${aboveMa ? 60 : 45}%) ${washPattern.isWash ? "Resume uptrend" : "Support holds"}
+${keySupport.toFixed(0)} holds → ${keyResistance.toFixed(0)} → ${(keyResistance + atr).toFixed(0)}+
 ${aboveMa ? "★★★★☆" : "★★★☆☆"}
-
-### Scenario B (${aboveMa ? 40 : 55}% probability)
-Break ${keySupport.toFixed(0)} → deeper correction
-Target: ${(keySupport - atr).toFixed(0)} → ${(keySupport - atr * 1.5).toFixed(0)}
+### B (${aboveMa ? 40 : 55}%) Deeper correction
+Break ${keySupport.toFixed(0)} → ${(keySupport - atr).toFixed(0)} → ${(keySupport - atr * 1.5).toFixed(0)}
 ${!aboveMa ? "★★★☆☆" : "★★☆☆☆"}
 
 ## Key Watchpoints
