@@ -58,7 +58,7 @@ export default function Home() {
   const riskScore = data && data.periods.length > 20 ? calcRiskScore(data.periods) : 5;
 
   return (
-    <main className="h-screen flex flex-col p-4 gap-3 overflow-hidden">
+    <main className="min-h-screen flex flex-col p-4 gap-3">
       {/* Header */}
       <header className="flex items-center justify-between shrink-0">
         <h1 className="text-xl font-bold">
@@ -89,7 +89,7 @@ export default function Home() {
       )}
 
       {data && !loading && (
-        <div className="flex-1 grid grid-cols-12 grid-rows-[55%_45%] gap-3 min-h-0 overflow-hidden">
+        <div className="flex-1 grid grid-cols-12 grid-rows-[420px_1fr] gap-3 min-h-[700px]">
 
           {/* TOP-LEFT: Snapshot */}
           <div className="col-span-2 row-span-1 overflow-y-auto">
