@@ -29,8 +29,8 @@ export default function SearchBar({ onSearch, loading }: Props) {
           value={query}
           onChange={e => { setQuery(e.target.value); setShowSuggestions(true); }}
           onFocus={() => setShowSuggestions(true)}
-          placeholder="搜尋股票代碼 (e.g. TSLA, 2330)"
-          className="w-full px-4 py-2.5 bg-[rgba(15,15,25,0.9)] border border-[rgba(0,240,255,0.3)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:border-[var(--neon-cyan)] focus:shadow-[0_0_15px_rgba(0,240,255,0.2)] transition-all"
+          placeholder="搜尋股票 (e.g. TSLA, 2330)"
+          className="w-full pl-4 pr-16 py-2.5 bg-[rgba(15,15,25,0.9)] border border-[rgba(0,240,255,0.3)] rounded-lg text-sm text-[var(--text-primary)] placeholder:text-[var(--text-secondary)] focus:outline-none focus:border-[var(--neon-cyan)] focus:shadow-[0_0_15px_rgba(0,240,255,0.2)] transition-all"
         />
         <button type="submit" disabled={loading}
           className="absolute right-2 top-1/2 -translate-y-1/2 px-3 py-1 text-xs bg-[rgba(0,240,255,0.15)] border border-[rgba(0,240,255,0.3)] rounded text-[var(--neon-cyan)] hover:bg-[rgba(0,240,255,0.25)] transition-all disabled:opacity-50">

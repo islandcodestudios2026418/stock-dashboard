@@ -7,7 +7,8 @@ interface Props {
   symbol: string;
 }
 
-function fmt(n: number, decimals = 2) {
+function fmt(n: number | undefined | null, decimals = 2) {
+  if (n == null || isNaN(n)) return "—";
   return n.toLocaleString(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals });
 }
 

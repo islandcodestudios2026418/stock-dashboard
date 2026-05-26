@@ -2,10 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { OHLCV, getIndicatorSummary, calcRiskScore, calcBOLL, calcMACD, calcRSI } from "@/lib/indicators";
 import { calcSupportResistance, calcTradePlan } from "@/lib/levels";
 
-const ANTHROPIC_KEY = process.env.ANTHROPIC_API_KEY || "";
-
 export async function POST(req: NextRequest) {
-  const { symbol, name, periods, lang = "zh-TW" } = await req.json() as {
+  const { periods, lang = "zh-TW" } = await req.json() as {
     symbol: string; name: string; periods: OHLCV[]; lang?: string;
   };
 
@@ -13,148 +11,16 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Not enough data" }, { status: 400 });
   }
 
-  // Calculate all indicators
-  const closes = periods.map((p: OHLCV) => p.close);
-  const last = periods[periods.length - 1];
-  const prev = periods[periods.length - 2];
   const indicators = getIndicatorSummary(periods);
   const riskScore = calcRiskScore(periods);
   const levels = calcSupportResistance(periods);
   const tradePlan = calcTradePlan(periods, levels);
-  const boll = calcBOLL(closes);
-  const macd = calcMACD(closes);
-  const rsi = calcRSI(closes);
+  const analysis = generateAnalysis(periods, indicators, riskScore, levels, tradePlan, lang);
 
-  const change = last.close - prev.close;
-  const changePct = ((change / prev.close) * 100).toFixed(2);
-
-  const supports = levels.filter(l => l.type === "support").slice(0, 3);
-  const resistances = levels.filter(l => l.type === "resistance").slice(0, 3);
-
-  const dataContext = `
-Stock: ${name} (${symbol})
-Current Price: ${last.close.toFixed(2)} (${change >= 0 ? "+" : ""}${changePct}%)
-Open: ${last.open.toFixed(2)}, High: ${last.high.toFixed(2)}, Low: ${last.low.toFixed(2)}
-Volume: ${last.volume.toLocaleString()} (20-day avg: ${indicators.volume.avg20.toLocaleString()})
-
-BOLL(20): Upper=${boll.upper[boll.upper.length-1]?.toFixed(2)}, Mid=${boll.mid[boll.mid.length-1]?.toFixed(2)}, Lower=${boll.lower[boll.lower.length-1]?.toFixed(2)}
-MACD: DIF=${macd.dif[macd.dif.length-1].toFixed(3)}, DEA=${macd.dea[macd.dea.length-1].toFixed(3)}, ${indicators.macd.status}
-RSI(14): ${(rsi[rsi.length-1] ?? 50).toFixed(1)} (${indicators.rsi.status})
-KDJ: K=${indicators.kdj.k.toFixed(1)}, D=${indicators.kdj.d.toFixed(1)}, J=${indicators.kdj.j.toFixed(1)} (${indicators.kdj.status})
-MA Trend: ${indicators.ma.status}, SMA20=${indicators.ma.sma20?.toFixed(2)}
-Volume Status: ${indicators.volume.status}
-
-Support Levels: ${supports.map(s => `${s.price.toFixed(2)} (${s.strength})`).join(", ") || "N/A"}
-Resistance Levels: ${resistances.map(r => `${r.price.toFixed(2)} (${r.strength})`).join(", ") || "N/A"}
-
-Risk Score: ${riskScore}/10
-${tradePlan ? `Trade Plan: Entry=${tradePlan.entry.toFixed(2)}, Stop=${tradePlan.stopLoss.toFixed(2)}, T1=${tradePlan.target1.toFixed(2)}, T2=${tradePlan.target2.toFixed(2)}, R:R=${tradePlan.riskReward.toFixed(2)}` : ""}
-
-Recent 5 candles (newest first):
-${periods.slice(-5).reverse().map(p => `  ${new Date(p.time * 1000).toLocaleDateString()}: O=${p.open.toFixed(2)} H=${p.high.toFixed(2)} L=${p.low.toFixed(2)} C=${p.close.toFixed(2)} V=${p.volume.toLocaleString()}`).join("\n")}
-`;
-
-  const prompt = lang === "zh-TW" ? `你是一位專業的股票技術分析師。根據以下數據，用繁體中文提供完整的技術面分析報告。
-
-${dataContext}
-
-請提供以下分析（用 Markdown 格式）：
-
-## 大趨勢判斷
-（目前處於什麼階段？主升浪、回調、盤整？）
-
-## 今日盤勢性質
-（今天的K線代表什麼？是洗盤、突破、還是趨勢延續？）
-
-## 短線結構
-（1-3天的走勢預判）
-
-## 關鍵支撐與壓力
-（根據成交量分佈和走勢，列出具體價位）
-
-## 交易策略建議
-### 已持倉
-（該怎麼做？停損設哪？）
-### 想進場
-（在哪裡進？停損和目標？風險報酬比？）
-
-## 主力意圖分析
-（從量價關係判斷主力在做什麼）
-
-## 風險因素
-（列出目前的風險點）
-
-## 未來劇本
-（給出2-3個可能的走勢劇本和機率）
-
-注意：分析要具體、有數字、有邏輯，不要空泛。` :
-
-`You are a professional stock technical analyst. Based on the following data, provide a comprehensive technical analysis report.
-
-${dataContext}
-
-Provide the following analysis (in Markdown format):
-
-## Overall Trend
-(What phase is the stock in? Uptrend, pullback, consolidation?)
-
-## Today's Price Action
-(What does today's candle represent? Shakeout, breakout, trend continuation?)
-
-## Short-term Structure
-(1-3 day outlook)
-
-## Key Support & Resistance
-(Specific price levels based on volume profile and price action)
-
-## Trading Strategy
-### Already Holding
-(What to do? Where to set stop-loss?)
-### Want to Enter
-(Where to enter? Stop-loss and targets? Risk-reward ratio?)
-
-## Institutional Flow Analysis
-(What are the big players doing based on volume-price relationship?)
-
-## Risk Factors
-(List current risks)
-
-## Future Scenarios
-(2-3 possible scenarios with probability estimates)
-
-Be specific with numbers and logic, not vague.`;
-
-  // If no API key, generate a structured analysis from the data directly
-  if (!ANTHROPIC_KEY) {
-    const fallback = generateFallbackAnalysis(periods, indicators, riskScore, levels, tradePlan, lang);
-    return NextResponse.json({ analysis: fallback, levels, tradePlan, riskScore });
-  }
-
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-sonnet-4-20250514",
-        max_tokens: 2000,
-        messages: [{ role: "user", content: prompt }],
-      }),
-    });
-
-    const json = await res.json();
-    const analysis = json.content?.[0]?.text || "Analysis generation failed";
-    return NextResponse.json({ analysis, levels, tradePlan, riskScore });
-  } catch (e: unknown) {
-    const msg = e instanceof Error ? e.message : "AI error";
-    return NextResponse.json({ error: msg }, { status: 500 });
-  }
+  return NextResponse.json({ analysis, levels, tradePlan, riskScore });
 }
 
-function generateFallbackAnalysis(
+function generateAnalysis(
   periods: OHLCV[],
   indicators: ReturnType<typeof getIndicatorSummary>,
   riskScore: number,
@@ -162,62 +28,132 @@ function generateFallbackAnalysis(
   tradePlan: ReturnType<typeof calcTradePlan>,
   lang: string
 ) {
+  const closes = periods.map(d => d.close);
   const last = periods[periods.length - 1];
   const prev = periods[periods.length - 2];
   const change = last.close - prev.close;
+  const changePct = ((change / prev.close) * 100).toFixed(2);
   const isUp = change >= 0;
+
+  const boll = calcBOLL(closes);
+  const macd = calcMACD(closes);
+  const rsi = calcRSI(closes);
+  const lastRsi = rsi[rsi.length - 1] ?? 50;
+  const bollMid = boll.mid[boll.mid.length - 1];
+  const bollUpper = boll.upper[boll.upper.length - 1];
+  const bollLower = boll.lower[boll.lower.length - 1];
+
   const supports = levels.filter(l => l.type === "support").slice(0, 3);
   const resistances = levels.filter(l => l.type === "resistance").slice(0, 3);
 
-  if (lang === "zh-TW") {
-    return `## 大趨勢判斷
-均線趨勢：**${indicators.ma.status === "bullish" ? "多頭排列" : "空頭排列"}**
-MACD：${indicators.macd.status === "bullish" ? "多頭" : indicators.macd.status === "bearish" ? "空頭" : "中性"}（DIF: ${indicators.macd.dif.toFixed(3)}）
+  // Determine trend
+  const sma20 = bollMid;
+  const aboveMa = sma20 ? last.close > sma20 : false;
+  const macdBullish = macd.dif[macd.dif.length - 1] > macd.dea[macd.dea.length - 1];
+  const volExpanding = last.volume > indicators.volume.avg20 * 1.2;
 
-## 今日盤勢
-${isUp ? "收紅" : "收黑"}，漲跌幅 ${((change / prev.close) * 100).toFixed(2)}%
-成交量${indicators.volume.status === "bullish" ? "放大" : indicators.volume.status === "bearish" ? "萎縮" : "持平"}
+  if (lang === "zh-TW") {
+    const trend = aboveMa && macdBullish ? "多頭趨勢" : !aboveMa && !macdBullish ? "空頭趨勢" : "盤整震盪";
+    const todayAction = isUp
+      ? (volExpanding ? "帶量上攻，買盤積極" : "溫和反彈，量能不足")
+      : (volExpanding ? "放量下殺，賣壓沉重" : "縮量回調，洗盤可能性高");
+
+    return `## 大趨勢判斷
+目前處於**${trend}**階段。
+- 價格${aboveMa ? "站上" : "跌破"} MA20（${bollMid?.toFixed(2)}）
+- MACD ${macdBullish ? "多頭排列" : "空頭排列"}（DIF: ${macd.dif[macd.dif.length-1].toFixed(3)}）
+- 布林通道：上軌 ${bollUpper?.toFixed(2)} / 中軌 ${bollMid?.toFixed(2)} / 下軌 ${bollLower?.toFixed(2)}
+
+## 今日盤勢性質
+${isUp ? "收紅" : "收黑"} ${changePct}%，${todayAction}
+- 成交量：${last.volume.toLocaleString()}（20日均量：${indicators.volume.avg20.toLocaleString()}）
+- RSI(14)：${lastRsi.toFixed(1)}${lastRsi > 70 ? "（超買區）" : lastRsi < 30 ? "（超賣區）" : ""}
+- KDJ：K=${indicators.kdj.k.toFixed(1)} D=${indicators.kdj.d.toFixed(1)} J=${indicators.kdj.j.toFixed(1)}
+
+## 短線結構（1-3日）
+${macdBullish && lastRsi > 50 ? "短線偏多，但注意是否遇壓回落" : !macdBullish && lastRsi < 50 ? "短線偏空，關注支撐是否守住" : "方向不明，等待突破確認"}
 
 ## 關鍵支撐與壓力
-**壓力位：** ${resistances.map(r => r.price.toFixed(2)).join(" → ") || "無明顯壓力"}
-**支撐位：** ${supports.map(s => s.price.toFixed(2)).join(" → ") || "無明顯支撐"}
+**壓力位：** ${resistances.map(r => `${r.price.toFixed(2)}（${r.strength === "strong" ? "強壓" : "中壓"}）`).join(" → ") || "無明顯壓力"}
+**支撐位：** ${supports.map(s => `${s.price.toFixed(2)}（${s.strength === "strong" ? "強撐" : "中撐"}）`).join(" → ") || "無明顯支撐"}
 
-## 交易策略
-${tradePlan ? `- 進場：${tradePlan.entry.toFixed(2)}
+## 交易策略建議
+### 已持倉
+${riskScore >= 7 ? "⚠️ 風險偏高，建議減倉或設好停損" : aboveMa ? "趨勢仍在，可續抱，停損設在支撐位下方" : "跌破均線，考慮減倉觀望"}
+${tradePlan ? `- 停損參考：${tradePlan.stopLoss.toFixed(2)}` : ""}
+
+### 想進場
+${tradePlan ? `- 進場區間：${tradePlan.entry.toFixed(2)} 附近
 - 停損：${tradePlan.stopLoss.toFixed(2)}
 - 目標1：${tradePlan.target1.toFixed(2)}
 - 目標2：${tradePlan.target2.toFixed(2)}
-- 風險報酬比：1:${tradePlan.riskReward.toFixed(2)}` : "資料不足，無法生成交易計畫"}
+- 風險報酬比：1:${tradePlan.riskReward.toFixed(2)} ${tradePlan.riskReward >= 2 ? "✅ 值得" : tradePlan.riskReward >= 1 ? "⚠️ 普通" : "❌ 不划算"}` : "目前不建議追高，等回測支撐再考慮"}
 
-## 風險評分：${riskScore}/10
-${riskScore >= 7 ? "⚠️ 高風險環境，建議減倉或觀望" : riskScore >= 5 ? "中等風險，注意控制倉位" : "風險可控，可正常操作"}
+## 主力意圖分析
+${volExpanding && isUp ? "主力積極買入，量價配合良好" : volExpanding && !isUp ? "主力出貨跡象，放量下跌需警惕" : !volExpanding && isUp ? "散戶推動反彈，缺乏主力參與" : "縮量整理，主力可能在吸籌或觀望"}
 
----
-*⚠️ 此為基礎分析。設定 ANTHROPIC_API_KEY 可啟用 AI 深度分析。*`;
+## 風險因素
+${riskScore >= 7 ? "- ⚠️ 整體風險偏高" : ""}
+${lastRsi > 75 ? "- RSI 超買，短線有回調壓力" : lastRsi < 25 ? "- RSI 超賣，可能出現反彈" : ""}
+${!aboveMa ? "- 價格在均線下方，趨勢偏弱" : ""}
+${volExpanding && !isUp ? "- 放量下跌，賣壓明顯" : ""}
+- 注意總經環境和板塊輪動影響
+
+## 未來劇本
+${aboveMa ? `**劇本A（機率 60%）：** 回測 ${bollMid?.toFixed(2)} 後反彈，目標 ${resistances[0]?.price.toFixed(2) || "前高"}
+**劇本B（機率 40%）：** 跌破 ${bollMid?.toFixed(2)}，下探 ${supports[0]?.price.toFixed(2) || "前低"}` : `**劇本A（機率 55%）：** 在 ${supports[0]?.price.toFixed(2) || "支撐位"} 獲得支撐反彈
+**劇本B（機率 45%）：** 跌破支撐，進入中期調整`}`;
   }
 
+  // English version
+  const trend = aboveMa && macdBullish ? "Uptrend" : !aboveMa && !macdBullish ? "Downtrend" : "Consolidation";
+  const todayAction = isUp
+    ? (volExpanding ? "Strong buying with volume expansion" : "Mild bounce on low volume")
+    : (volExpanding ? "Heavy selling with volume spike" : "Low-volume pullback, possible shakeout");
+
   return `## Overall Trend
-MA Trend: **${indicators.ma.status}**
-MACD: ${indicators.macd.status} (DIF: ${indicators.macd.dif.toFixed(3)})
+Currently in **${trend}** phase.
+- Price ${aboveMa ? "above" : "below"} MA20 (${bollMid?.toFixed(2)})
+- MACD ${macdBullish ? "bullish" : "bearish"} (DIF: ${macd.dif[macd.dif.length-1].toFixed(3)})
+- Bollinger: Upper ${bollUpper?.toFixed(2)} / Mid ${bollMid?.toFixed(2)} / Lower ${bollLower?.toFixed(2)}
 
-## Today's Action
-${isUp ? "Bullish" : "Bearish"} candle, ${((change / prev.close) * 100).toFixed(2)}% change
-Volume: ${indicators.volume.status}
+## Today's Price Action
+${isUp ? "Bullish" : "Bearish"} candle, ${changePct}% — ${todayAction}
+- Volume: ${last.volume.toLocaleString()} (20d avg: ${indicators.volume.avg20.toLocaleString()})
+- RSI(14): ${lastRsi.toFixed(1)}${lastRsi > 70 ? " (overbought)" : lastRsi < 30 ? " (oversold)" : ""}
+- KDJ: K=${indicators.kdj.k.toFixed(1)} D=${indicators.kdj.d.toFixed(1)} J=${indicators.kdj.j.toFixed(1)}
 
-## Key Levels
-**Resistance:** ${resistances.map(r => r.price.toFixed(2)).join(" → ") || "None identified"}
-**Support:** ${supports.map(s => s.price.toFixed(2)).join(" → ") || "None identified"}
+## Short-term Structure (1-3 days)
+${macdBullish && lastRsi > 50 ? "Short-term bullish, watch for resistance rejection" : !macdBullish && lastRsi < 50 ? "Short-term bearish, watch if support holds" : "Directionless, wait for breakout confirmation"}
 
-## Trade Plan
-${tradePlan ? `- Entry: ${tradePlan.entry.toFixed(2)}
-- Stop Loss: ${tradePlan.stopLoss.toFixed(2)}
+## Key Support & Resistance
+**Resistance:** ${resistances.map(r => `${r.price.toFixed(2)} (${r.strength})`).join(" → ") || "None identified"}
+**Support:** ${supports.map(s => `${s.price.toFixed(2)} (${s.strength})`).join(" → ") || "None identified"}
+
+## Trading Strategy
+### Already Holding
+${riskScore >= 7 ? "⚠️ High risk — consider reducing or tightening stops" : aboveMa ? "Trend intact, hold with stop below support" : "Below MA — consider reducing exposure"}
+${tradePlan ? `- Stop-loss reference: ${tradePlan.stopLoss.toFixed(2)}` : ""}
+
+### Want to Enter
+${tradePlan ? `- Entry zone: around ${tradePlan.entry.toFixed(2)}
+- Stop-loss: ${tradePlan.stopLoss.toFixed(2)}
 - Target 1: ${tradePlan.target1.toFixed(2)}
 - Target 2: ${tradePlan.target2.toFixed(2)}
-- Risk:Reward = 1:${tradePlan.riskReward.toFixed(2)}` : "Insufficient data"}
+- Risk:Reward = 1:${tradePlan.riskReward.toFixed(2)} ${tradePlan.riskReward >= 2 ? "✅ Favorable" : tradePlan.riskReward >= 1 ? "⚠️ Marginal" : "❌ Unfavorable"}` : "Not recommended to chase — wait for support retest"}
 
-## Risk Score: ${riskScore}/10
-${riskScore >= 7 ? "⚠️ High risk — consider reducing position" : riskScore >= 5 ? "Moderate risk — manage position size" : "Risk manageable — normal operations"}
+## Institutional Flow
+${volExpanding && isUp ? "Active institutional buying, volume confirms move" : volExpanding && !isUp ? "Distribution pattern — heavy selling on volume" : !volExpanding && isUp ? "Retail-driven bounce, lacking institutional participation" : "Low-volume consolidation — accumulation or indecision"}
 
----
-*⚠️ Basic analysis. Set ANTHROPIC_API_KEY for full AI-powered deep analysis.*`;
+## Risk Factors
+${riskScore >= 7 ? "- ⚠️ Elevated overall risk" : ""}
+${lastRsi > 75 ? "- RSI overbought — pullback likely" : lastRsi < 25 ? "- RSI oversold — bounce possible" : ""}
+${!aboveMa ? "- Price below MA — weak trend" : ""}
+${volExpanding && !isUp ? "- Volume spike on decline — selling pressure" : ""}
+- Monitor macro environment and sector rotation
+
+## Future Scenarios
+${aboveMa ? `**Scenario A (60%):** Pullback to ${bollMid?.toFixed(2)} then bounce toward ${resistances[0]?.price.toFixed(2) || "prior high"}
+**Scenario B (40%):** Break below ${bollMid?.toFixed(2)}, test ${supports[0]?.price.toFixed(2) || "prior low"}` : `**Scenario A (55%):** Find support at ${supports[0]?.price.toFixed(2) || "support"} and bounce
+**Scenario B (45%):** Break support, enter medium-term correction`}`;
 }

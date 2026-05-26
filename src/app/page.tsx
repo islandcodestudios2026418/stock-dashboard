@@ -45,13 +45,13 @@ export default function Home() {
     }
   }, [timeframe]);
 
-  const fetchAnalysis = async (stockData: StockData) => {
+  const fetchAnalysis = async (stockData: StockData, overrideLang?: string) => {
     setAnalysisLoading(true);
     try {
       const res = await fetch("/api/analyze", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbol: stockData.symbol, name: stockData.name, periods: stockData.periods, lang }),
+        body: JSON.stringify({ symbol: stockData.symbol, name: stockData.name, periods: stockData.periods, lang: overrideLang || lang }),
       });
       const json = await res.json();
       if (json.error) throw new Error(json.error);
@@ -80,7 +80,22 @@ export default function Home() {
           <p className="text-xs text-[var(--text-secondary)]">互動式技術面分析儀表板</p>
         </div>
         <div className="flex items-center gap-3">
-          <button onClick={() => setLang(l => l === "zh-TW" ? "en" : "zh-TW")}
+          <button onClick={() => {
+              const newLang = lang === "zh-TW" ? "en" : "zh-TW";
+              setLang(newLang);
+              if (data) {
+                setAnalysisLoading(true);
+                fetch("/api/analyze", {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({ symbol: data.symbol, name: data.name, periods: data.periods, lang: newLang }),
+                }).then(r => r.json()).then(json => {
+                  setAnalysis(json.analysis || "");
+                  setLevels(json.levels || []);
+                  setTradePlan(json.tradePlan || null);
+                }).finally(() => setAnalysisLoading(false));
+              }
+            }}
             className="px-2 py-1 text-xs border border-[rgba(0,240,255,0.3)] rounded text-[var(--text-secondary)] hover:text-[var(--neon-cyan)] transition-all">
             {lang === "zh-TW" ? "中文" : "EN"}
           </button>
