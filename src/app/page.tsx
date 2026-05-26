@@ -8,6 +8,7 @@ import RiskGauge from "@/components/RiskGauge";
 import AnalysisPanel from "@/components/AnalysisPanel";
 import MacroPanel from "@/components/MacroPanel";
 import SectorHeatmap from "@/components/SectorHeatmap";
+import Watchlist from "@/components/Watchlist";
 import { OHLCV, getIndicatorSummary, calcRiskScore } from "@/lib/indicators";
 import { PriceLevel, TradePlan } from "@/lib/levels";
 
@@ -71,6 +72,7 @@ export default function Home() {
             className="px-2.5 py-1 text-xs border border-[rgba(0,240,255,0.3)] rounded text-[var(--text-secondary)] hover:text-[var(--neon-cyan)]">
             {lang === "zh-TW" ? "EN" : "中文"}
           </button>
+          <Watchlist onSelect={fetchStock} currentSymbol={data?.symbol} />
           <SearchBar onSearch={fetchStock} loading={loading} />
         </div>
       </header>
