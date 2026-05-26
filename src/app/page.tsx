@@ -167,10 +167,6 @@ export default function Home() {
                 </div>
               </div>
             </div>
-            {/* Fundamentals */}
-            <FundamentalsPanel symbol={data.symbol} lang={lang} />
-            {/* News */}
-            <NewsPanel symbol={data.symbol} lang={lang} />
           </div>
 
           {/* BOTTOM-LEFT: Indicator Radar */}
@@ -181,6 +177,14 @@ export default function Home() {
           {/* BOTTOM-CENTER + RIGHT: Analysis cards in horizontal flow */}
           <div className="col-span-10 row-span-1 min-h-0 overflow-hidden">
             <AnalysisPanel analysis={analysis} levels={[]} tradePlan={null} loading={analysisLoading} />
+          </div>
+
+          {/* EXTRA ROW: Fundamentals + News */}
+          <div className="col-span-6">
+            <FundamentalsPanel symbol={data.symbol} lang={lang} />
+          </div>
+          <div className="col-span-6">
+            <NewsPanel symbol={data.symbol} lang={lang} />
           </div>
         </div>
       )}
