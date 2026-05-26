@@ -15,7 +15,7 @@ export async function GET(req: NextRequest) {
     const data = await new Promise<Record<string, unknown>>((resolve, reject) => {
       const timeout = setTimeout(() => { client.end(); reject(new Error("timeout")); }, 15000);
 
-      chart.setMarket(symbol, { timeframe: tf, range: 100 });
+      chart.setMarket(symbol, { timeframe: tf, range: 300 });
 
       chart.onUpdate(() => {
         clearTimeout(timeout);

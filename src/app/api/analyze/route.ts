@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { OHLCV, getIndicatorSummary, calcRiskScore, calcBOLL, calcMACD, calcRSI } from "@/lib/indicators";
+import { OHLCV, getIndicatorSummary, calcRiskScore, calcBOLL, calcMACD, calcRSI, calcKDJ, calcSMA, calcEMA } from "@/lib/indicators";
 import { calcSupportResistance, calcTradePlan } from "@/lib/levels";
 
 export async function POST(req: NextRequest) {
@@ -20,6 +20,139 @@ export async function POST(req: NextRequest) {
   return NextResponse.json({ analysis, levels, tradePlan, riskScore });
 }
 
+// --- Deep analysis helpers ---
+
+function getCandleBody(c: OHLCV) { return Math.abs(c.close - c.open); }
+function getCandleRange(c: OHLCV) { return c.high - c.low; }
+function isRedCandle(c: OHLCV) { return c.close < c.open; }
+function getUpperShadow(c: OHLCV) { return c.high - Math.max(c.open, c.close); }
+function getLowerShadow(c: OHLCV) { return Math.min(c.open, c.close) - c.low; }
+
+function calcATR(data: OHLCV[], period = 14): number {
+  let sum = 0;
+  const start = Math.max(1, data.length - period);
+  for (let i = start; i < data.length; i++) {
+    const tr = Math.max(data[i].high - data[i].low, Math.abs(data[i].high - data[i-1].close), Math.abs(data[i].low - data[i-1].close));
+    sum += tr;
+  }
+  return sum / Math.min(period, data.length - 1);
+}
+
+function calcControlLevel(data: OHLCV[]): number {
+  // Estimate institutional control: based on volume concentration, price stability, and trend consistency
+  const recent = data.slice(-20);
+  const closes = recent.map(d => d.close);
+  const volumes = recent.map(d => d.volume);
+  const avgVol = volumes.reduce((a, b) => a + b, 0) / volumes.length;
+  
+  // Factor 1: Volume consistency (less erratic = more controlled)
+  const volStd = Math.sqrt(volumes.reduce((s, v) => s + (v - avgVol) ** 2, 0) / volumes.length);
+  const volCV = volStd / avgVol; // coefficient of variation
+  const volScore = Math.max(0, 1 - volCV); // lower CV = higher control
+  
+  // Factor 2: Price trend consistency
+  let trendDays = 0;
+  const sma5 = calcSMA(closes, 5);
+  for (let i = 5; i < closes.length; i++) {
+    if (sma5[i] !== null && sma5[i-1] !== null) {
+      if ((sma5[i]! > sma5[i-1]!) === (closes[closes.length-1] > closes[0])) trendDays++;
+    }
+  }
+  const trendScore = trendDays / Math.max(1, closes.length - 5);
+  
+  // Factor 3: Volume on trend days vs counter-trend days
+  let trendVol = 0, counterVol = 0;
+  const isUpTrend = closes[closes.length-1] > closes[0];
+  for (let i = 1; i < recent.length; i++) {
+    if ((recent[i].close > recent[i-1].close) === isUpTrend) trendVol += recent[i].volume;
+    else counterVol += recent[i].volume;
+  }
+  const flowScore = trendVol / Math.max(1, trendVol + counterVol);
+  
+  return Math.round((volScore * 25 + trendScore * 40 + flowScore * 35));
+}
+
+function detectWashPattern(data: OHLCV[]): { isWash: boolean; type: string; characteristics: string[] } {
+  const recent = data.slice(-10);
+  const last = recent[recent.length - 1];
+  const avgVol = data.slice(-20).reduce((s, d) => s + d.volume, 0) / 20;
+  
+  const characteristics: string[] = [];
+  let isWash = false;
+  let type = "";
+  
+  // Check for sharp drop without volume expansion (wash pattern)
+  const dropPct = (last.close - last.open) / last.open * 100;
+  const volRatio = last.volume / avgVol;
+  
+  if (dropPct < -2 && volRatio < 1.3) {
+    isWash = true;
+    type = "急殺洗槓桿";
+    characteristics.push("跌幅較大但量能未放大");
+    characteristics.push("未跌破前平台核心支撐");
+    characteristics.push("更像主力清洗短線追高籌碼");
+  } else if (Math.abs(dropPct) < 1 && volRatio < 0.7) {
+    isWash = true;
+    type = "縮量橫盤洗盤";
+    characteristics.push("量能逐步萎縮");
+    characteristics.push("價格窄幅震盪");
+    characteristics.push("耐心消磨浮籌");
+  } else if (dropPct < -1 && volRatio > 1.5) {
+    type = "放量下殺";
+    characteristics.push("量價齊跌");
+    characteristics.push("賣壓明顯");
+    if (getLowerShadow(last) > getCandleBody(last)) {
+      isWash = true;
+      characteristics.push("下影線長，有承接力道");
+    }
+  } else if (dropPct > 2 && volRatio > 1.3) {
+    type = "帶量突破";
+    characteristics.push("量價配合");
+    characteristics.push("突破意圖明確");
+  } else {
+    type = "正常波動";
+  }
+  
+  // Check staircase pattern (階梯式壓盤)
+  let stairDown = 0;
+  for (let i = recent.length - 5; i < recent.length; i++) {
+    if (i > 0 && recent[i].high < recent[i-1].high) stairDown++;
+  }
+  if (stairDown >= 3) characteristics.push("階梯式壓盤");
+  
+  // Check volume shrinkage pattern
+  const recentVols = recent.slice(-5).map(d => d.volume);
+  const volDecreasing = recentVols.every((v, i) => i === 0 || v <= recentVols[i-1] * 1.1);
+  if (volDecreasing) characteristics.push("量能逐步萎縮");
+  
+  return { isWash, type, characteristics };
+}
+
+function getShortTermStructure(data: OHLCV[], macd: ReturnType<typeof calcMACD>, rsi: (number | null)[]): string {
+  const closes = data.map(d => d.close);
+  const last = closes.length - 1;
+  const lastRsi = rsi[last] ?? 50;
+  const prevRsi = rsi[last - 1] ?? 50;
+  
+  // Check MACD histogram trend
+  const hist = macd.histogram;
+  const histTrend = hist[last] > hist[last-1] ? "回升" : "下降";
+  const macdCross = (macd.dif[last] > macd.dea[last]) !== (macd.dif[last-1] > macd.dea[last-1]);
+  
+  // Check 1h-equivalent (use last 6 candles as proxy for intraday)
+  const recent6 = closes.slice(-6);
+  const shortTrend = recent6[recent6.length-1] > recent6[0] ? "短線轉多" : "短線偏空";
+  
+  // Bearish divergence check
+  const rsiDiverge = closes[last] > closes[last-5] && lastRsi < (rsi[last-5] ?? 50);
+  
+  if (macdCross && macd.dif[last] > macd.dea[last]) return "回踩確認階段，MACD金叉形成";
+  if (macdCross && macd.dif[last] < macd.dea[last]) return "死叉確認階段，短線轉弱";
+  if (histTrend === "回升" && lastRsi > prevRsi) return "空方力量衰減，短線轉多跡象";
+  if (rsiDiverge) return "價格新高但RSI背離，注意回調風險";
+  return `${shortTrend}，MACD柱狀體${histTrend}`;
+}
+
 function generateAnalysis(
   periods: OHLCV[],
   indicators: ReturnType<typeof getIndicatorSummary>,
@@ -38,122 +171,319 @@ function generateAnalysis(
   const boll = calcBOLL(closes);
   const macd = calcMACD(closes);
   const rsi = calcRSI(closes);
+  const kdj = calcKDJ(periods);
   const lastRsi = rsi[rsi.length - 1] ?? 50;
   const bollMid = boll.mid[boll.mid.length - 1];
   const bollUpper = boll.upper[boll.upper.length - 1];
   const bollLower = boll.lower[boll.lower.length - 1];
+  const atr = calcATR(periods);
 
   const supports = levels.filter(l => l.type === "support").slice(0, 3);
   const resistances = levels.filter(l => l.type === "resistance").slice(0, 3);
 
-  // Determine trend
   const sma20 = bollMid;
+  const sma5Arr = calcSMA(closes, 5);
+  const sma5 = sma5Arr[sma5Arr.length - 1];
+  const sma60Arr = calcSMA(closes, 60);
+  const sma60 = sma60Arr[sma60Arr.length - 1];
   const aboveMa = sma20 ? last.close > sma20 : false;
   const macdBullish = macd.dif[macd.dif.length - 1] > macd.dea[macd.dea.length - 1];
+  const macdDif = macd.dif[macd.dif.length - 1];
+  const macdDea = macd.dea[macd.dea.length - 1];
   const volExpanding = last.volume > indicators.volume.avg20 * 1.2;
+  const volRatio = (last.volume / indicators.volume.avg20).toFixed(2);
+
+  // Deep analysis
+  const controlLevel = calcControlLevel(periods);
+  const washPattern = detectWashPattern(periods);
+  const shortStructure = getShortTermStructure(periods, macd, rsi);
+
+  // Candle character analysis
+  const bodyPct = (getCandleBody(last) / last.open * 100).toFixed(2);
+  const upperShadowPct = (getUpperShadow(last) / getCandleRange(last) * 100).toFixed(0);
+  const lowerShadowPct = (getLowerShadow(last) / getCandleRange(last) * 100).toFixed(0);
+  
+  // Key support zone
+  const keySupport = supports.length > 0 ? supports[0].price : (bollLower ?? last.close * 0.95);
+  const keyResistance = resistances.length > 0 ? resistances[0].price : (bollUpper ?? last.close * 1.05);
+
+  // Determine if MACD is about to cross
+  const macdGap = Math.abs(macdDif - macdDea);
+  const macdConverging = macdGap < Math.abs(macd.dif[macd.dif.length - 3] - macd.dea[macd.dea.length - 3]);
 
   if (lang === "zh-TW") {
-    const trend = aboveMa && macdBullish ? "多頭趨勢" : !aboveMa && !macdBullish ? "空頭趨勢" : "盤整震盪";
-    const todayAction = isUp
-      ? (volExpanding ? "帶量上攻，買盤積極" : "溫和反彈，量能不足")
-      : (volExpanding ? "放量下殺，賣壓沉重" : "縮量回調，洗盤可能性高");
+    const trend = aboveMa && macdBullish ? "主升浪未破壞" 
+      : aboveMa && !macdBullish ? "高位震盪整理"
+      : !aboveMa && macdBullish ? "底部反彈初期"
+      : "下跌趨勢中";
+    
+    const trendDetail = aboveMa 
+      ? `股價仍在MA20上方附近，布林中軌未拐頭向下，日線MACD${macdBullish ? "多頭排列" : "雖死叉"}，但仍在零軸上方。`
+      : `股價跌破MA20（${sma20?.toFixed(2)}），布林中軌開始走平/下彎，MACD${macdBullish ? "即將金叉" : "空頭排列"}。`;
 
-    return `## 大趨勢判斷
-目前處於**${trend}**階段。
-- 價格${aboveMa ? "站上" : "跌破"} MA20（${bollMid?.toFixed(2)}）
-- MACD ${macdBullish ? "多頭排列" : "空頭排列"}（DIF: ${macd.dif[macd.dif.length-1].toFixed(3)}）
-- 布林通道：上軌 ${bollUpper?.toFixed(2)} / 中軌 ${bollMid?.toFixed(2)} / 下軌 ${bollLower?.toFixed(2)}
+    // Today's candle character
+    const candleChar = isUp 
+      ? (volExpanding ? "帶量長紅突破" : getCandleBody(last) < getCandleRange(last) * 0.3 ? "十字星猶豫" : "溫和收紅")
+      : (getCandleBody(last) > getCandleRange(last) * 0.6 ? "大陰線" : getLowerShadow(last) > getCandleBody(last) ? "下影線長，有承接" : "陰線回調");
+    
+    const candleNarrative = isUp
+      ? (volExpanding ? "量價配合良好，多方主導" : "反彈力道有限，量能不足需觀察後續")
+      : (volExpanding ? "放量下殺，短線恐慌情緒蔓延" : "跌幅較大但量能未放大，未跌破前平台核心支撐，更像主力清洗短線追高籌碼");
 
-## 今日盤勢性質
-${isUp ? "收紅" : "收黑"} ${changePct}%，${todayAction}
-- 成交量：${last.volume.toLocaleString()}（20日均量：${indicators.volume.avg20.toLocaleString()}）
-- RSI(14)：${lastRsi.toFixed(1)}${lastRsi > 70 ? "（超買區）" : lastRsi < 30 ? "（超賣區）" : ""}
-- KDJ：K=${indicators.kdj.k.toFixed(1)} D=${indicators.kdj.d.toFixed(1)} J=${indicators.kdj.j.toFixed(1)}
+    // Institutional intent
+    const instGoals = [];
+    if (washPattern.isWash) {
+      instGoals.push("清洗高位獲利盤");
+      instGoals.push("降低浮籌");
+      instGoals.push("為下一波拉升減壓");
+    } else if (volExpanding && isUp) {
+      instGoals.push("積極吸籌建倉");
+      instGoals.push("突破關鍵壓力位");
+      instGoals.push("吸引跟風盤");
+    } else if (volExpanding && !isUp) {
+      instGoals.push("高位派發出貨");
+      instGoals.push("製造恐慌情緒");
+      instGoals.push("壓低吸籌或離場");
+    } else {
+      instGoals.push("控制節奏等待時機");
+      instGoals.push("維持區間震盪");
+      instGoals.push("消磨散戶耐心");
+    }
 
-## 短線結構（1-3日）
-${macdBullish && lastRsi > 50 ? "短線偏多，但注意是否遇壓回落" : !macdBullish && lastRsi < 50 ? "短線偏空，關注支撐是否守住" : "方向不明，等待突破確認"}
+    // Manipulation path
+    const manipPath = washPattern.isWash
+      ? ["急殺製造恐慌", "清洗槓桿資金", "壓回均線附近", "橫盤震盪吸籌", "再次上攻新高"]
+      : volExpanding && isUp
+      ? ["底部吸籌完成", "突破關鍵壓力", "回踩確認支撐", "加速拉升", "高位派發"]
+      : ["維持區間震盪", "逐步降低成本", "等待催化劑", "快速拉升脫離成本區", "進入主升浪"];
 
-## 關鍵支撐與壓力
-**壓力位：** ${resistances.map(r => `${r.price.toFixed(2)}（${r.strength === "strong" ? "強壓" : "中壓"}）`).join(" → ") || "無明顯壓力"}
-**支撐位：** ${supports.map(s => `${s.price.toFixed(2)}（${s.strength === "strong" ? "強撐" : "中撐"}）`).join(" → ") || "無明顯支撐"}
+    // Strategy for holders
+    const holderStrategy = riskScore >= 7
+      ? `你的成本若在${(last.close * 0.95).toFixed(0)}附近，仍在主力成本上方。\n\n策略：等待${keySupport.toFixed(0)}支撐確認\n① ${keySupport.toFixed(0)}守住\n② 出現放量量反包\n③ ${macdConverging ? "MACD即將金叉" : "MACD重新金叉"}\n\n結果：大概率開啟第二波上攻\n目標位：${keyResistance.toFixed(0)} → ${(keyResistance + atr).toFixed(0)} → ${(keyResistance + atr * 2).toFixed(0)}+`
+      : aboveMa
+      ? `趨勢仍在，持股待漲。\n\n策略：沿MA20持有\n① 不跌破${sma20?.toFixed(0)}繼續持有\n② 跌破${sma20?.toFixed(0)}減半倉\n③ 跌破${keySupport.toFixed(0)}全部離場\n\n目標位：${keyResistance.toFixed(0)} → ${(keyResistance + atr).toFixed(0)}`
+      : `已跌破均線，建議減倉觀望。\n\n策略：等待企穩信號\n① 觀察${keySupport.toFixed(0)}是否守住\n② 等待MACD金叉確認\n③ 確認後可補回倉位`;
+
+    // Strategy for new buyers
+    const buyerStrategy = tradePlan
+      ? `更好位置：\n\n激進：${keySupport.toFixed(0)} ～ ${(keySupport + atr * 0.5).toFixed(0)} 區域\n穩健：等重新站回${sma20?.toFixed(0)}以上\n再右側跟隨\n\n停損：跌破${tradePlan.stopLoss.toFixed(0)}確認有效\n且連續收不回來\n\n目標位：\n${tradePlan.target1.toFixed(0)} → ${tradePlan.target2.toFixed(0)}`
+      : `目前不建議追高\n等回測${keySupport.toFixed(0)}支撐再考慮`;
+
+    // Risk factors (bearish)
+    const riskFactors: string[] = [];
+    if (!aboveMa) riskFactors.push("日線高位回落");
+    if (!macdBullish) riskFactors.push(`MACD${macdConverging ? "即將" : "已"}死叉`);
+    if (last.close < (sma5 ?? last.close)) riskFactors.push("跌破短線趨勢");
+    if (lastRsi > 70) riskFactors.push("RSI超買區域");
+    const recentHigh = Math.max(...periods.slice(-10).map(d => d.high));
+    if ((recentHigh - last.close) / recentHigh > 0.05) riskFactors.push("波動劇烈");
+    if (volExpanding && !isUp) riskFactors.push("放量下跌");
+    if (indicators.kdj.j > 80) riskFactors.push("KDJ高位鈍化");
+    if (riskFactors.length === 0) riskFactors.push("短線獲利回吐壓力");
+
+    // Bullish factors
+    const bullFactors: string[] = [];
+    if (aboveMa) bullFactors.push("日線結構未徹底破壞");
+    if (sma60 && last.close > sma60) bullFactors.push("主力成本區仍在下方");
+    if (sma20 && sma60 && sma20 > sma60) bullFactors.push("長期均線未死叉");
+    if (washPattern.isWash) bullFactors.push("洗盤特徵明顯，非真跌");
+    if (controlLevel > 60) bullFactors.push(`籌碼鎖定較好（控盤${controlLevel}%）`);
+    if (macdDif > 0) bullFactors.push("MACD仍在零軸上方");
+    if (bullFactors.length === 0) bullFactors.push("超跌後可能技術性反彈");
+
+    // Scenarios
+    const scenarioA = aboveMa
+      ? `${keySupport.toFixed(0)}企穩 → 橫盤2-4天 → 重返${keyResistance.toFixed(0)} → 再衝${(keyResistance + atr).toFixed(0)}+`
+      : `在${keySupport.toFixed(0)}獲得支撐 → 反彈至${sma20?.toFixed(0)} → 突破後加速`;
+    const scenarioB = aboveMa
+      ? `跌破${keySupport.toFixed(0)}且收不回 → 看${(keySupport - atr).toFixed(0)} → ${(keySupport - atr * 1.5).toFixed(0)}附近`
+      : `跌破${keySupport.toFixed(0)} → 進入中期調整 → 看${(keySupport - atr * 2).toFixed(0)}`;
+    const probA = aboveMa ? 60 : 45;
+    const probB = 100 - probA;
+
+    // Key watchpoints
+    const watchpoints: string[] = [];
+    watchpoints.push(`${keySupport.toFixed(0)}～${(keySupport + atr * 0.3).toFixed(0)}支撐強度`);
+    watchpoints.push(`量能變化（是否放量反包）`);
+    watchpoints.push(`MACD能否金叉回零軸上方`);
+    watchpoints.push(`納指走勢與市場情緒`);
+    if (macdConverging) watchpoints.push(`DIF/DEA即將交叉，方向確認`);
+
+    // Stop loss / risk control section
+    const stopLossNote = tradePlan 
+      ? `跌破${tradePlan.stopLoss.toFixed(0)}確認有效\n且連續收不回來`
+      : `跌破${keySupport.toFixed(0)}確認有效`;
+    const qualitativeChange = washPattern.isWash
+      ? `由洗盤 → 轉為中級調整`
+      : `由回調 → 轉為趨勢反轉`;
+
+    return `## 行情說明
+### 大趨勢：${trend}
+${trendDetail}
+
+### 今日K線性質：${candleChar}
+${candleNarrative}
+
+### 短線結構：${shortStructure}
+${macdConverging ? "DIF與DEA逐漸靠近，即將出現方向選擇。" : ""}第一輪${isUp ? "獲利" : "恐慌"}殺跌接近尾聲。
+
+### 關鍵支撐：${keySupport.toFixed(0)}～${(keySupport + atr * 0.3).toFixed(0)}
+前突破平台 + 日線核心支撐 + 主力短線防守位，決定後續方向。
+
+## 主力意圖（深度解析）
+### 主力核心目標
+${instGoals.map(g => `- ${g}`).join("\n")}
+
+### 洗盤特徵
+${washPattern.characteristics.length > 0 ? washPattern.characteristics.map((c, i) => `① ${c}`).join("\n") : "① 目前無明顯洗盤特徵\n② 正常市場波動"}
+- 節奏可控
+
+### 主力操作路徑
+${manipPath.map((p, i) => `① ${p}`).join("\n")}
+
+### 主力控盤程度
+${"█".repeat(Math.floor(controlLevel / 10))}${"░".repeat(10 - Math.floor(controlLevel / 10))} ${controlLevel > 70 ? "較強" : controlLevel > 50 ? "中等" : "偏弱"} ${controlLevel}%
+${controlLevel > 60 ? "籌碼鎖定較好，仍以多頭控盤為主" : "籌碼較為分散，方向待確認"}
 
 ## 交易策略建議
-### 已持倉
-${riskScore >= 7 ? "⚠️ 風險偏高，建議減倉或設好停損" : aboveMa ? "趨勢仍在，可續抱，停損設在支撐位下方" : "跌破均線，考慮減倉觀望"}
-${tradePlan ? `- 停損參考：${tradePlan.stopLoss.toFixed(2)}` : ""}
+### 情況1：已持倉
+**${riskScore >= 7 ? "不建議恐慌割肉" : aboveMa ? "持股待漲" : "減倉觀望"}**
 
-### 想進場
-${tradePlan ? `- 進場區間：${tradePlan.entry.toFixed(2)} 附近
-- 停損：${tradePlan.stopLoss.toFixed(2)}
-- 目標1：${tradePlan.target1.toFixed(2)}
-- 目標2：${tradePlan.target2.toFixed(2)}
-- 風險報酬比：1:${tradePlan.riskReward.toFixed(2)} ${tradePlan.riskReward >= 2 ? "✅ 值得" : tradePlan.riskReward >= 1 ? "⚠️ 普通" : "❌ 不划算"}` : "目前不建議追高，等回測支撐再考慮"}
+${holderStrategy}
 
-## 主力意圖分析
-${volExpanding && isUp ? "主力積極買入，量價配合良好" : volExpanding && !isUp ? "主力出貨跡象，放量下跌需警惕" : !volExpanding && isUp ? "散戶推動反彈，缺乏主力參與" : "縮量整理，主力可能在吸籌或觀望"}
+### 情況2：想加倉
+**${riskScore >= 7 ? "不適合追著補" : "等待更好位置"}**
 
-## 風險因素
-${riskScore >= 7 ? "- ⚠️ 整體風險偏高" : ""}
-${lastRsi > 75 ? "- RSI 超買，短線有回調壓力" : lastRsi < 25 ? "- RSI 超賣，可能出現反彈" : ""}
-${!aboveMa ? "- 價格在均線下方，趨勢偏弱" : ""}
-${volExpanding && !isUp ? "- 放量下跌，賣壓明顯" : ""}
-- 注意總經環境和板塊輪動影響
+${buyerStrategy}
 
-## 未來劇本
-${aboveMa ? `**劇本A（機率 60%）：** 回測 ${bollMid?.toFixed(2)} 後反彈，目標 ${resistances[0]?.price.toFixed(2) || "前高"}
-**劇本B（機率 40%）：** 跌破 ${bollMid?.toFixed(2)}，下探 ${supports[0]?.price.toFixed(2) || "前低"}` : `**劇本A（機率 55%）：** 在 ${supports[0]?.price.toFixed(2) || "支撐位"} 獲得支撐反彈
-**劇本B（機率 45%）：** 跌破支撐，進入中期調整`}`;
+### 止損與風控
+${stopLossNote}
+
+質性改變：
+${qualitativeChange}
+
+下方目標位：
+${supports.slice(0, 3).map(s => s.price.toFixed(0)).join(" → ")}
+
+嚴格止損：跌破${(keySupport - atr).toFixed(0)}收盤止損
+
+## 風險評估
+### 風險因素
+${riskFactors.map(f => `● ${f}`).join("\n")}
+
+### 但未到牛轉熊
+${bullFactors.map(f => `◎ ${f}`).join("\n")}
+
+## 未來可能劇本
+### 劇本A（機率${probA}%）
+${washPattern.isWash ? "洗盤後繼續上攻" : isUp ? "突破後加速" : "支撐反彈"}
+${scenarioA}
+${probA >= 55 ? "★★★★☆" : "★★★☆☆"}
+
+### 劇本B（機率${probB}%）
+${!washPattern.isWash && !isUp ? "跌破支撐，進入調整" : "回調加深"}
+${scenarioB}
+${probB >= 45 ? "★★★☆☆" : "★★☆☆☆"}
+
+## 關鍵關注點
+${watchpoints.map((w, i) => `① ${w}`).join("\n")}`;
   }
 
-  // English version
-  const trend = aboveMa && macdBullish ? "Uptrend" : !aboveMa && !macdBullish ? "Downtrend" : "Consolidation";
-  const todayAction = isUp
-    ? (volExpanding ? "Strong buying with volume expansion" : "Mild bounce on low volume")
-    : (volExpanding ? "Heavy selling with volume spike" : "Low-volume pullback, possible shakeout");
+  // --- English version ---
+  const trendEn = aboveMa && macdBullish ? "Uptrend intact" 
+    : aboveMa && !macdBullish ? "High-level consolidation"
+    : !aboveMa && macdBullish ? "Early bounce from bottom"
+    : "Downtrend";
 
-  return `## Overall Trend
-Currently in **${trend}** phase.
-- Price ${aboveMa ? "above" : "below"} MA20 (${bollMid?.toFixed(2)})
-- MACD ${macdBullish ? "bullish" : "bearish"} (DIF: ${macd.dif[macd.dif.length-1].toFixed(3)})
-- Bollinger: Upper ${bollUpper?.toFixed(2)} / Mid ${bollMid?.toFixed(2)} / Lower ${bollLower?.toFixed(2)}
+  const candleCharEn = isUp
+    ? (volExpanding ? "Strong bullish candle with volume" : "Mild green candle")
+    : (getCandleBody(last) > getCandleRange(last) * 0.6 ? "Large bearish candle" : "Pullback with support");
 
-## Today's Price Action
-${isUp ? "Bullish" : "Bearish"} candle, ${changePct}% — ${todayAction}
-- Volume: ${last.volume.toLocaleString()} (20d avg: ${indicators.volume.avg20.toLocaleString()})
-- RSI(14): ${lastRsi.toFixed(1)}${lastRsi > 70 ? " (overbought)" : lastRsi < 30 ? " (oversold)" : ""}
-- KDJ: K=${indicators.kdj.k.toFixed(1)} D=${indicators.kdj.d.toFixed(1)} J=${indicators.kdj.j.toFixed(1)}
+  const candleNarrativeEn = isUp
+    ? (volExpanding ? "Volume confirms buying pressure, bulls in control" : "Bounce lacks conviction, volume below average")
+    : (volExpanding ? "Heavy selling with volume spike — panic selling" : `Drop of ${Math.abs(+changePct).toFixed(1)}% but volume didn't expand significantly. Didn't break core support. Likely a leverage flush / shakeout by institutions.`);
 
-## Short-term Structure (1-3 days)
-${macdBullish && lastRsi > 50 ? "Short-term bullish, watch for resistance rejection" : !macdBullish && lastRsi < 50 ? "Short-term bearish, watch if support holds" : "Directionless, wait for breakout confirmation"}
+  const shortStructureEn = getShortTermStructure(periods, macd, rsi);
 
-## Key Support & Resistance
-**Resistance:** ${resistances.map(r => `${r.price.toFixed(2)} (${r.strength})`).join(" → ") || "None identified"}
-**Support:** ${supports.map(s => `${s.price.toFixed(2)} (${s.strength})`).join(" → ") || "None identified"}
+  return `## Market Narrative
+### Big Picture: ${trendEn}
+Price ${aboveMa ? "above" : "below"} MA20 (${sma20?.toFixed(2)}). Bollinger mid-band ${aboveMa ? "still pointing up" : "flattening/turning down"}. MACD ${macdBullish ? "bullish" : "bearish"}, ${macdDif > 0 ? "above" : "below"} zero line.
+
+### Today's Candle: ${candleCharEn}
+${candleNarrativeEn}
+
+### Short-term Structure: ${shortStructureEn}
+${macdConverging ? "DIF and DEA converging — direction decision imminent." : ""} First wave of ${isUp ? "profit-taking" : "panic"} selling nearing exhaustion.
+
+### Key Support: ${keySupport.toFixed(2)}～${(keySupport + atr * 0.3).toFixed(2)}
+Prior breakout platform + daily core support + institutional defense zone.
+
+## Institutional Intent (Deep Analysis)
+### Core Objectives
+${washPattern.isWash ? "- Flush leveraged positions\n- Reduce floating shares\n- Prepare for next leg up" : volExpanding && isUp ? "- Active accumulation\n- Break key resistance\n- Attract momentum traders" : "- Control pace and timing\n- Maintain range\n- Exhaust retail patience"}
+
+### ${washPattern.isWash ? "Wash" : "Market"} Characteristics
+${washPattern.characteristics.length > 0 ? washPattern.characteristics.map((c, i) => `${i+1}. ${c}`).join("\n") : "1. Normal market fluctuation\n2. No clear manipulation pattern"}
+
+### Manipulation Path
+1. ${washPattern.isWash ? "Sharp drop to create panic" : "Accumulate at support"}
+2. ${washPattern.isWash ? "Flush leveraged longs" : "Test resistance"}
+3. ${washPattern.isWash ? "Push back to moving averages" : "Consolidate gains"}
+4. ${washPattern.isWash ? "Sideways accumulation" : "Break out with volume"}
+5. ${washPattern.isWash ? "Launch next leg up" : "Distribute at highs"}
+
+### Control Level: ${controlLevel}%
+${"█".repeat(Math.floor(controlLevel / 10))}${"░".repeat(10 - Math.floor(controlLevel / 10))} ${controlLevel > 70 ? "Strong" : controlLevel > 50 ? "Moderate" : "Weak"}
+${controlLevel > 60 ? "Shares well locked up, bulls still in control" : "Shares dispersed, direction uncertain"}
 
 ## Trading Strategy
-### Already Holding
-${riskScore >= 7 ? "⚠️ High risk — consider reducing or tightening stops" : aboveMa ? "Trend intact, hold with stop below support" : "Below MA — consider reducing exposure"}
-${tradePlan ? `- Stop-loss reference: ${tradePlan.stopLoss.toFixed(2)}` : ""}
+### Situation 1: Already Holding
+**${riskScore >= 7 ? "Don't panic sell" : aboveMa ? "Hold with trend" : "Consider reducing"}**
 
-### Want to Enter
-${tradePlan ? `- Entry zone: around ${tradePlan.entry.toFixed(2)}
-- Stop-loss: ${tradePlan.stopLoss.toFixed(2)}
-- Target 1: ${tradePlan.target1.toFixed(2)}
-- Target 2: ${tradePlan.target2.toFixed(2)}
-- Risk:Reward = 1:${tradePlan.riskReward.toFixed(2)} ${tradePlan.riskReward >= 2 ? "✅ Favorable" : tradePlan.riskReward >= 1 ? "⚠️ Marginal" : "❌ Unfavorable"}` : "Not recommended to chase — wait for support retest"}
+${riskScore >= 7 ? `Your cost basis likely near ${(last.close * 0.95).toFixed(0)}, still above institutional cost.\n\nStrategy: Wait for ${keySupport.toFixed(0)} support confirmation\n① Hold ${keySupport.toFixed(0)}\n② Watch for volume reversal candle\n③ ${macdConverging ? "MACD about to golden cross" : "Wait for MACD golden cross"}\n\nLikely outcome: Second wave up\nTargets: ${keyResistance.toFixed(0)} → ${(keyResistance + atr).toFixed(0)} → ${(keyResistance + atr * 2).toFixed(0)}+` : `Trend intact. Hold along MA20.\nStop below ${keySupport.toFixed(0)}`}
 
-## Institutional Flow
-${volExpanding && isUp ? "Active institutional buying, volume confirms move" : volExpanding && !isUp ? "Distribution pattern — heavy selling on volume" : !volExpanding && isUp ? "Retail-driven bounce, lacking institutional participation" : "Low-volume consolidation — accumulation or indecision"}
+### Situation 2: Want to Add
+**${riskScore >= 7 ? "Not ideal to chase" : "Wait for better entry"}**
 
-## Risk Factors
-${riskScore >= 7 ? "- ⚠️ Elevated overall risk" : ""}
-${lastRsi > 75 ? "- RSI overbought — pullback likely" : lastRsi < 25 ? "- RSI oversold — bounce possible" : ""}
-${!aboveMa ? "- Price below MA — weak trend" : ""}
-${volExpanding && !isUp ? "- Volume spike on decline — selling pressure" : ""}
-- Monitor macro environment and sector rotation
+${tradePlan ? `Aggressive: ${keySupport.toFixed(0)}～${(keySupport + atr * 0.5).toFixed(0)} zone\nConservative: Wait for price to reclaim ${sma20?.toFixed(0)}\n\nStop: Below ${tradePlan.stopLoss.toFixed(0)} (confirmed)\nTargets: ${tradePlan.target1.toFixed(0)} → ${tradePlan.target2.toFixed(0)}` : `Wait for support retest at ${keySupport.toFixed(0)}`}
+
+### Stop Loss & Risk Control
+Break below ${(keySupport - atr).toFixed(0)} on close = hard stop
+
+Qualitative change: ${washPattern.isWash ? "From shakeout → to real correction" : "From pullback → to trend reversal"}
+
+## Risk Assessment
+### Bearish Factors
+${riskScore >= 7 ? "● Elevated overall risk" : ""}
+${!macdBullish ? "● MACD bearish cross" : ""}
+${!aboveMa ? "● Below key moving average" : ""}
+${volExpanding && !isUp ? "● Volume spike on decline" : ""}
+${lastRsi > 75 ? "● RSI overbought" : ""}
+● Short-term profit-taking pressure
+
+### But Not Yet Bear Market
+${aboveMa ? "◎ Daily structure not broken" : ""}
+${sma60 && last.close > sma60 ? "◎ Institutional cost zone still below" : ""}
+${controlLevel > 60 ? `◎ Shares well locked (${controlLevel}% control)` : ""}
+${macdDif > 0 ? "◎ MACD still above zero line" : ""}
+${washPattern.isWash ? "◎ Shakeout pattern, not real selling" : ""}
+◎ Long-term moving averages still intact
 
 ## Future Scenarios
-${aboveMa ? `**Scenario A (60%):** Pullback to ${bollMid?.toFixed(2)} then bounce toward ${resistances[0]?.price.toFixed(2) || "prior high"}
-**Scenario B (40%):** Break below ${bollMid?.toFixed(2)}, test ${supports[0]?.price.toFixed(2) || "prior low"}` : `**Scenario A (55%):** Find support at ${supports[0]?.price.toFixed(2) || "support"} and bounce
-**Scenario B (45%):** Break support, enter medium-term correction`}`;
+### Scenario A (${aboveMa ? 60 : 45}% probability)
+${washPattern.isWash ? "Shakeout complete → resume uptrend" : "Support holds → bounce"}
+${keySupport.toFixed(0)} holds → consolidate 2-4 days → retest ${keyResistance.toFixed(0)} → push to ${(keyResistance + atr).toFixed(0)}+
+${aboveMa ? "★★★★☆" : "★★★☆☆"}
+
+### Scenario B (${aboveMa ? 40 : 55}% probability)
+Break ${keySupport.toFixed(0)} → deeper correction
+Target: ${(keySupport - atr).toFixed(0)} → ${(keySupport - atr * 1.5).toFixed(0)}
+${!aboveMa ? "★★★☆☆" : "★★☆☆☆"}
+
+## Key Watchpoints
+① ${keySupport.toFixed(0)}～${(keySupport + atr * 0.3).toFixed(0)} support strength
+② Volume change (watch for reversal candle)
+③ MACD golden cross above zero line
+④ Index trend & market sentiment
+${macdConverging ? "⑤ DIF/DEA about to cross — direction confirmation" : ""}`;
 }
