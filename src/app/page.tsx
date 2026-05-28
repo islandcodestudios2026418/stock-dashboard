@@ -26,6 +26,9 @@ export default function Home() {
   const [tradePlan, setTradePlan] = useState<TradePlan | null>(null);
   const [analysisLoading, setAnalysisLoading] = useState(false);
   const [lang, setLang] = useState<"zh-TW" | "en">("zh-TW");
+  const [aiAnalysis, setAiAnalysis] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiCached, setAiCached] = useState(false);
 
   const fetchAnalysis = useCallback(async (stockData: StockData, overrideLang?: string) => {
     setAnalysisLoading(true);
@@ -41,6 +44,21 @@ export default function Home() {
       setTradePlan(json.tradePlan || null);
     } catch { setAnalysis(""); }
     finally { setAnalysisLoading(false); }
+  }, [lang]);
+
+  const fetchAiAnalysis = useCallback(async (stockData: StockData) => {
+    setAiLoading(true);
+    try {
+      const res = await fetch("/api/ai-analysis", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ symbol: stockData.symbol, periods: stockData.periods, lang }),
+      });
+      const json = await res.json();
+      if (json.error) { setAiAnalysis(`⚠️ ${json.error}`); }
+      else { setAiAnalysis(json.analysis || ""); setAiCached(json.cached || false); }
+    } catch { setAiAnalysis("Failed to fetch AI analysis"); }
+    finally { setAiLoading(false); }
   }, [lang]);
 
   const fetchStock = useCallback(async (symbol: string, tf?: string) => {
@@ -185,6 +203,29 @@ export default function Home() {
           </div>
           <div className="col-span-6">
             <NewsPanel symbol={data.symbol} lang={lang} />
+          </div>
+
+          {/* AI Analysis */}
+          <div className="col-span-12 glass-card p-4 border border-[rgba(168,85,247,0.3)]">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-bold text-purple-400">🤖 AI 深度分析（Claude Opus 4）</h3>
+              <div className="flex items-center gap-2">
+                {aiCached && <span className="text-xs text-[var(--text-secondary)]">📦 今日快取</span>}
+                <button onClick={() => fetchAiAnalysis(data)}
+                  disabled={aiLoading}
+                  className="px-3 py-1 text-xs rounded border border-purple-500 text-purple-300 hover:bg-purple-500/20 disabled:opacity-50">
+                  {aiLoading ? "分析中..." : "🧠 啟動 AI 分析"}
+                </button>
+              </div>
+            </div>
+            {aiAnalysis && (
+              <div className="text-sm leading-relaxed whitespace-pre-wrap text-[var(--text-primary)]">
+                {aiAnalysis}
+              </div>
+            )}
+            {!aiAnalysis && !aiLoading && (
+              <p className="text-xs text-[var(--text-secondary)]">點擊按鈕啟動 AI 分析，每支股票每天分析一次（快取）</p>
+            )}
           </div>
         </div>
       )}
