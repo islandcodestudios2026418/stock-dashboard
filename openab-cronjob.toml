@@ -1,0 +1,57 @@
+# OpenAB Scheduled Analysis — cronjob.toml
+# Place at: $HOME/.openab/cronjob.toml on Zeabur container
+# Hot-reloads automatically — no restart needed
+
+# === 美股分析 (每天台灣 21:00 = 美股開盤前30分) ===
+[[jobs]]
+id = "daily-us-stocks"
+enabled = true
+schedule = "0 21 * * 1-5"
+channel = "REPLACE_WITH_YOUR_DISCORD_CHANNEL_ID"
+platform = "discord"
+sender_name = "DailyAnalysis"
+timezone = "Asia/Taipei"
+message = """執行每日美股分析。
+
+自選股清單：
+- NASDAQ:TSLA
+- NASDAQ:NVDA
+- NASDAQ:AAPL
+- NASDAQ:AMZN
+- NASDAQ:META
+
+請對每支股票：
+1. 呼叫 get_price → get_indicators (1D) → get_levels
+2. 用數據做完整技術分析（趨勢、支撐壓力、主力意圖、操作建議）
+3. 標記風險等級 🔴🟡🟢
+
+最後輸出摘要表格：
+| 股票 | 現價 | 趨勢 | 信號 | 建議 | 風險 |
+
+如果有股票接近停損位或出現重大信號，優先用 🔴 標記。"""
+
+# === 台股分析 (每天台灣 08:30 = 台股開盤前30分) ===
+[[jobs]]
+id = "daily-tw-stocks"
+enabled = true
+schedule = "30 8 * * 1-5"
+channel = "REPLACE_WITH_YOUR_DISCORD_CHANNEL_ID"
+platform = "discord"
+sender_name = "DailyAnalysis"
+timezone = "Asia/Taipei"
+message = """執行每日台股分析。
+
+自選股清單：
+- TWSE:2330
+- TWSE:2454
+- TWSE:2317
+
+請對每支股票：
+1. 呼叫 get_price → get_indicators (1D) → get_levels
+2. 用數據做完整技術分析（趨勢、支撐壓力、主力意圖、操作建議）
+3. 標記風險等級 🔴🟡🟢
+
+最後輸出摘要表格：
+| 股票 | 現價 | 趨勢 | 信號 | 建議 | 風險 |
+
+如果有股票接近停損位或出現重大信號，優先用 🔴 標記。"""

@@ -39,3 +39,9 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+
+# analysis cache
+/.analysis-cache/
+/.ai-requests/
+/.ai-results/
