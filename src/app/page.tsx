@@ -69,7 +69,12 @@ export default function Home() {
       });
       const json = await res.json();
       if (json.error) { setAiAnalysis(`⚠️ ${json.error}`); }
-      else { setAiAnalysis(json.analysis || ""); setAiCached(json.cached || false); }
+      else {
+        // AI result replaces the main analysis panels
+        setAnalysis(json.analysis || "");
+        setAiAnalysis(json.analysis ? "✅ AI 分析已載入" : "");
+        setAiCached(json.cached || false);
+      }
     } catch { setAiAnalysis("Failed to fetch AI analysis"); }
     finally { setAiLoading(false); }
   }, [lang, aiProvider, apiKeys]);
@@ -219,12 +224,16 @@ export default function Home() {
             <NewsPanel symbol={data.symbol} lang={lang} />
           </div>
 
-          {/* AI Analysis */}
-          <div className="col-span-12 glass-card p-4 border border-[rgba(168,85,247,0.3)]">
-            <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-purple-400">🤖 AI 深度分析</h3>
+          {/* AI Analysis Controls */}
+          <div className="col-span-12 glass-card p-3 border border-[rgba(168,85,247,0.3)]">
+            <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
+                <h3 className="text-sm font-bold text-purple-400">🤖 AI 深度分析</h3>
                 {aiCached && <span className="text-xs text-[var(--text-secondary)]">📦 快取</span>}
+                {aiLoading && <span className="text-xs text-purple-300 animate-pulse">分析中...</span>}
+                {aiAnalysis && !aiLoading && <span className="text-xs text-green-400">{aiAnalysis}</span>}
+              </div>
+              <div className="flex items-center gap-2">
                 <select value={aiProvider} onChange={e => { const v = e.target.value as typeof aiProvider; setAiProvider(v); if (typeof window !== "undefined") localStorage.setItem("ai-provider", v); }}
                   className="px-2 py-1 text-xs rounded bg-[var(--card-bg)] border border-[rgba(168,85,247,0.3)] text-purple-300">
                   <option value="kiro">🆓 Kiro CLI</option>
@@ -234,16 +243,16 @@ export default function Home() {
                 </select>
                 <button onClick={() => setShowSettings(!showSettings)}
                   className="px-2 py-1 text-xs rounded border border-[rgba(168,85,247,0.3)] text-purple-300 hover:bg-purple-500/20">⚙️</button>
-                <button onClick={() => fetchAiAnalysis(data)}
-                  disabled={aiLoading}
+                <button onClick={() => data && fetchAiAnalysis(data)}
+                  disabled={aiLoading || !data}
                   className="px-3 py-1 text-xs rounded border border-purple-500 text-purple-300 hover:bg-purple-500/20 disabled:opacity-50">
-                  {aiLoading ? "分析中..." : "🧠 啟動分析"}
+                  {aiLoading ? "⏳" : "🧠 重新分析"}
                 </button>
               </div>
             </div>
             {showSettings && (
-              <div className="mb-3 p-3 rounded bg-[rgba(168,85,247,0.05)] border border-[rgba(168,85,247,0.2)]">
-                <p className="text-xs text-[var(--text-secondary)] mb-2">API Keys（存在瀏覽器 localStorage，不會上傳伺服器以外的地方）</p>
+              <div className="mt-3 p-3 rounded bg-[rgba(168,85,247,0.05)] border border-[rgba(168,85,247,0.2)]">
+                <p className="text-xs text-[var(--text-secondary)] mb-2">API Keys（存在瀏覽器 localStorage）</p>
                 {(["anthropic", "openai", "gemini"] as const).map(p => (
                   <div key={p} className="flex items-center gap-2 mb-1">
                     <span className="text-xs w-20 text-[var(--text-secondary)]">{p}</span>
@@ -252,16 +261,8 @@ export default function Home() {
                       className="flex-1 px-2 py-1 text-xs rounded bg-[var(--card-bg)] border border-[var(--border)] text-[var(--text-primary)]" />
                   </div>
                 ))}
-                <p className="text-xs text-purple-400 mt-2">Kiro CLI = 免費（由伺服器的 kiro-cli 處理，較慢約30-60秒）</p>
+                <p className="text-xs text-purple-400 mt-2">Kiro CLI = 免費（伺服器處理，約30-60秒）| BYOK = 即時（5-10秒）</p>
               </div>
-            )}
-            {aiAnalysis && (
-              <div className="text-sm leading-relaxed whitespace-pre-wrap text-[var(--text-primary)]">
-                {aiAnalysis}
-              </div>
-            )}
-            {!aiAnalysis && !aiLoading && (
-              <p className="text-xs text-[var(--text-secondary)]">選擇 AI 提供者後點擊「啟動分析」。Kiro CLI 免費但較慢，BYOK 即時但需自備 key。</p>
             )}
           </div>
         </div>
