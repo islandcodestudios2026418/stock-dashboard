@@ -85,6 +85,7 @@ export default function Home() {
       const stockData = { symbol: json.symbol || symbol, name: json.name || symbol, periods: json.periods };
       setData(stockData);
       fetchAnalysis(stockData);
+      fetchAiAnalysis(stockData);
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : "Failed to fetch");
     } finally { setLoading(false); }
