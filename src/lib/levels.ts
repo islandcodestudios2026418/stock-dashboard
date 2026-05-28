@@ -5,6 +5,7 @@ export interface PriceLevel {
   type: "support" | "resistance";
   strength: "strong" | "moderate" | "weak";
   volume: number;
+  touches: number;
 }
 
 export interface TradePlan {
@@ -16,19 +17,23 @@ export interface TradePlan {
 }
 
 /**
- * Calculate support/resistance levels from volume profile + price action
+ * Calculate support/resistance levels from:
+ * 1. Volume Profile (recent-weighted)
+ * 2. Swing High/Low (5-bar)
+ * 3. Multi-touch validation
+ * 4. K-line reversal pattern confirmation
  */
 export function calcSupportResistance(data: OHLCV[]): PriceLevel[] {
-  if (data.length < 20) return [];
+  if (data.length < 30) return [];
 
   const latest = data[data.length - 1].close;
   const levels: PriceLevel[] = [];
 
-  // Volume Profile: divide price range into bins, find high-volume nodes
+  // --- 1. Volume Profile with recency weighting ---
   const prices = data.map(d => d.close);
-  const min = Math.min(...prices);
-  const max = Math.max(...prices);
-  const bins = 30;
+  const min = Math.min(...prices) * 0.98;
+  const max = Math.max(...prices) * 1.02;
+  const bins = 40;
   const binSize = (max - min) / bins;
   const volumeProfile: { price: number; volume: number }[] = [];
 
@@ -37,61 +42,120 @@ export function calcSupportResistance(data: OHLCV[]): PriceLevel[] {
     const binHigh = binLow + binSize;
     const binMid = (binLow + binHigh) / 2;
     let vol = 0;
-    for (const d of data) {
-      if (d.close >= binLow && d.close < binHigh) vol += d.volume;
+    for (let j = 0; j < data.length; j++) {
+      if (data[j].close >= binLow && data[j].close < binHigh) {
+        // Recency weight: last 60 bars get 3x, last 120 get 2x, rest 1x
+        const age = data.length - 1 - j;
+        const weight = age < 60 ? 3 : age < 120 ? 2 : 1;
+        vol += data[j].volume * weight;
+      }
     }
     volumeProfile.push({ price: binMid, volume: vol });
   }
 
-  // Find high-volume nodes (top 30%)
+  // Find high-volume nodes (top 25%)
   const sortedVols = [...volumeProfile].sort((a, b) => b.volume - a.volume);
-  const threshold = sortedVols[Math.floor(bins * 0.3)]?.volume || 0;
+  const threshold = sortedVols[Math.floor(bins * 0.25)]?.volume || 0;
 
   for (const node of volumeProfile) {
     if (node.volume >= threshold) {
       const type = node.price < latest ? "support" : "resistance";
       const strength = node.volume >= sortedVols[2]?.volume ? "strong"
         : node.volume >= sortedVols[5]?.volume ? "moderate" : "weak";
-      levels.push({ price: node.price, type, volume: node.volume, strength });
+      levels.push({ price: node.price, type, volume: node.volume, strength, touches: 0 });
     }
   }
 
-  // Add recent swing highs/lows
+  // --- 2. Swing High/Low with 5-bar lookback ---
   for (let i = 5; i < data.length - 5; i++) {
-    const isSwingHigh = data[i].high > data[i-1].high && data[i].high > data[i-2].high
-      && data[i].high > data[i+1].high && data[i].high > data[i+2].high;
-    const isSwingLow = data[i].low < data[i-1].low && data[i].low < data[i-2].low
-      && data[i].low < data[i+1].low && data[i].low < data[i+2].low;
+    const isSwingHigh = data[i].high >= data[i-1].high && data[i].high >= data[i-2].high
+      && data[i].high >= data[i-3].high && data[i].high >= data[i-4].high && data[i].high >= data[i-5].high
+      && data[i].high >= data[i+1].high && data[i].high >= data[i+2].high
+      && data[i].high >= data[i+3].high && data[i].high >= data[i+4].high && data[i].high >= data[i+5].high;
+    const isSwingLow = data[i].low <= data[i-1].low && data[i].low <= data[i-2].low
+      && data[i].low <= data[i-3].low && data[i].low <= data[i-4].low && data[i].low <= data[i-5].low
+      && data[i].low <= data[i+1].low && data[i].low <= data[i+2].low
+      && data[i].low <= data[i+3].low && data[i].low <= data[i+4].low && data[i].low <= data[i+5].low;
 
-    if (isSwingHigh && data[i].high > latest) {
-      levels.push({ price: data[i].high, type: "resistance", strength: "moderate", volume: data[i].volume });
+    if (isSwingHigh) {
+      const type = data[i].high > latest ? "resistance" : "support";
+      levels.push({ price: data[i].high, type, strength: "moderate", volume: data[i].volume, touches: 0 });
     }
-    if (isSwingLow && data[i].low < latest) {
-      levels.push({ price: data[i].low, type: "support", strength: "moderate", volume: data[i].volume });
+    if (isSwingLow) {
+      const type = data[i].low < latest ? "support" : "resistance";
+      levels.push({ price: data[i].low, type, strength: "moderate", volume: data[i].volume, touches: 0 });
     }
   }
 
-  // Deduplicate nearby levels (within 1%)
+  // --- 3. Deduplicate + Multi-touch validation ---
   const merged: PriceLevel[] = [];
   const sorted = levels.sort((a, b) => a.price - b.price);
   for (const level of sorted) {
-    const existing = merged.find(m => Math.abs(m.price - level.price) / level.price < 0.01);
+    const existing = merged.find(m => Math.abs(m.price - level.price) / level.price < 0.015);
     if (existing) {
+      existing.touches++;
       if (level.volume > existing.volume) {
-        existing.price = level.price;
         existing.volume = level.volume;
         existing.strength = level.strength;
       }
     } else {
-      merged.push({ ...level });
+      merged.push({ ...level, touches: 1 });
     }
   }
 
-  return merged.sort((a, b) => b.price - a.price);
+  // Count how many times price bounced off each level
+  for (const level of merged) {
+    const tolerance = level.price * 0.015;
+    let bounces = 0;
+    for (let i = 1; i < data.length - 1; i++) {
+      const touchedFromAbove = data[i].low <= level.price + tolerance && data[i].low >= level.price - tolerance && data[i + 1].close > level.price;
+      const touchedFromBelow = data[i].high >= level.price - tolerance && data[i].high <= level.price + tolerance && data[i + 1].close < level.price;
+      if (touchedFromAbove || touchedFromBelow) bounces++;
+    }
+    level.touches = Math.max(level.touches, bounces);
+    if (level.touches >= 3) level.strength = "strong";
+    else if (level.touches >= 2) level.strength = level.strength === "weak" ? "moderate" : level.strength;
+  }
+
+  // --- 4. K-line reversal pattern confirmation (boost strength) ---
+  for (const level of merged) {
+    const tolerance = level.price * 0.02;
+    for (let i = 1; i < data.length; i++) {
+      const near = Math.abs(data[i].low - level.price) < tolerance || Math.abs(data[i].high - level.price) < tolerance;
+      if (!near) continue;
+
+      const body = Math.abs(data[i].close - data[i].open);
+      const range = data[i].high - data[i].low;
+      if (range === 0) continue;
+      const lowerShadow = Math.min(data[i].open, data[i].close) - data[i].low;
+      const upperShadow = data[i].high - Math.max(data[i].open, data[i].close);
+
+      // Pin bar at support (long lower shadow)
+      if (level.type === "support" && lowerShadow > body * 2 && lowerShadow > range * 0.6) {
+        level.strength = "strong";
+      }
+      // Pin bar at resistance (long upper shadow)
+      if (level.type === "resistance" && upperShadow > body * 2 && upperShadow > range * 0.6) {
+        level.strength = "strong";
+      }
+      // Bullish engulfing at support
+      if (level.type === "support" && i > 0 && data[i].close > data[i].open
+        && data[i - 1].close < data[i - 1].open
+        && data[i].close > data[i - 1].open && data[i].open < data[i - 1].close) {
+        level.strength = "strong";
+      }
+    }
+  }
+
+  // --- 5. Filter: remove levels too close to current price (within 0.5%) ---
+  const filtered = merged.filter(l => Math.abs(l.price - latest) / latest > 0.005);
+
+  return filtered.sort((a, b) => b.price - a.price);
 }
 
 /**
  * Generate trade plan based on support/resistance + ATR
+ * With current price awareness filter
  */
 export function calcTradePlan(data: OHLCV[], levels: PriceLevel[]): TradePlan | null {
   if (data.length < 14 || levels.length < 2) return null;
@@ -103,34 +167,39 @@ export function calcTradePlan(data: OHLCV[], levels: PriceLevel[]): TradePlan | 
   for (let i = data.length - 14; i < data.length; i++) {
     const tr = Math.max(
       data[i].high - data[i].low,
-      Math.abs(data[i].high - data[i-1]?.close || 0),
-      Math.abs(data[i].low - data[i-1]?.close || 0)
+      Math.abs(data[i].high - (data[i - 1]?.close || data[i].open)),
+      Math.abs(data[i].low - (data[i - 1]?.close || data[i].open))
     );
     atrSum += tr;
   }
   const atr = atrSum / 14;
 
-  // Nearest support below = stop loss area
+  // Nearest support below current price
   const supports = levels.filter(l => l.type === "support" && l.price < latest).sort((a, b) => b.price - a.price);
-  // Only use resistance levels that are meaningful (at least 8% away from current price)
-  const minTargetDist = Math.max(atr * 1.5, latest * 0.08);
-  const resistances = levels.filter(l => l.type === "resistance" && l.price > latest + minTargetDist).sort((a, b) => a.price - b.price);
+  // Resistance above current price (at least 1 ATR away to be meaningful)
+  const resistances = levels.filter(l => l.type === "resistance" && l.price > latest + atr).sort((a, b) => a.price - b.price);
 
+  // Stop loss: below nearest support, cushioned by 0.5 ATR
   const stopLoss = supports.length > 0
     ? supports[0].price - atr * 0.5
     : latest - atr * 2;
 
+  // Targets: nearest resistances
   const target1 = resistances.length > 0
     ? resistances[0].price
-    : latest * 1.15;
+    : latest + atr * 3;
 
   const target2 = resistances.length > 1
     ? resistances[1].price
-    : latest * 1.25;
+    : latest + atr * 5;
 
   const risk = latest - stopLoss;
   const reward = target1 - latest;
-  const riskReward = risk > 0 ? reward / risk : 0;
+  const riskReward = risk > 0 ? +(reward / risk).toFixed(1) : 0;
 
-  return { entry: latest, stopLoss, target1, target2, riskReward };
+  // Sanity: stop loss shouldn't be more than 15% away
+  const maxStop = latest * 0.85;
+  const finalStop = Math.max(stopLoss, maxStop);
+
+  return { entry: latest, stopLoss: finalStop, target1, target2, riskReward };
 }

@@ -165,9 +165,16 @@ export function generateFullAnalysis(
       ? `\u8DA8\u52E2\u4ECD\u5728\uFF0C\u6301\u80A1\u5F85\u6F32\u3002\n\u7B56\u7565\uFF1A\u6CBF MA20\u6301\u6709\n\u2460 \u4E0D\u8DCC\u7834${fp(keySupport)}\u7E7C\u7E8C\u6301\u6709\n\u2461 \u8DCC\u7834${fp(keySupport)}\u6E1B\u534A\u5009\n\u2462 \u8DCC\u7834${fp(sma20 ?? 0)}\u5168\u90E8\u96E2\u5834\n\u6B62\u76C8\uFF1A${tradePlan ? `${fp(tradePlan.target2)}\uFF08\u7B2C\u4E8C\u58D3\u529B\u4F4D\uFF09` : `${fp(keyResistance)}+`}`
       : `\u5DF2\u8DCC\u7834\u5747\u7DDA\uFF0C\u5EFA\u8B70\u6E1B\u5009\u89C0\u671B\u3002\n\u2460 \u89C0\u5BDF${fp(keySupport)}\u662F\u5426\u5B88\u4F4F\n\u2461 \u7B49\u5F85MACD\u91D1\u53C9\u78BA\u8A8D\n\u2462 \u78BA\u8A8D\u5F8C\u53EF\u88DC\u56DE\u5009\u4F4D`;
 
+    // Filter: only suggest buy levels that make sense relative to current price
+    const nearSupport = Math.abs(last.close - keySupport) / last.close < 0.05; // within 5% of support
+    const aboveAllSupports = supports.every(s => last.close > s.price * 1.1); // 10%+ above all supports
     const buyerStrategy = tradePlan
-      ? `\u6FC0\u9032\uFF1A${fp(keySupport)}\uFF5E${fp(keySupport + atr * 0.5)} \u5340\u57DF\n\u7A69\u5065\uFF1A\u7B49\u91CD\u65B0\u7AD9\u56DE${fp(sma20 ?? 0)}\u4EE5\u4E0A\n\u505C\u640D\uFF1A\u8DCC\u7834${fp(tradePlan.stopLoss)}\u78BA\u8A8D\u6709\u6548\n\u6B62\u76C8\uFF1A${fp(tradePlan.target1)}\uFF08\u8CE3\u534A\uFF09\u2192 ${fp(tradePlan.target2)}\uFF08\u6E05\u5009\uFF09`
-      : `\u76EE\u524D\u4E0D\u5EFA\u8B70\u8FFD\u9AD8\n\u7B49\u56DE\u6E2C${fp(keySupport)}\u652F\u6490\u518D\u8003\u616E`;
+      ? nearSupport
+        ? `目前接近支撐區，可考慮分批建倉\n進場：${fp(last.close * 0.98)}～${fp(last.close)}（現價附近）\n停損：跌破${fp(tradePlan.stopLoss)}確認有效\n止盈：${fp(tradePlan.target1)}（賣半）→ ${fp(tradePlan.target2)}（清倉）`
+        : aboveAllSupports
+        ? `不適合追著補\n現價已遠離所有支撐位，追高風險大\n穩健：等回測${fp(sma20 ?? last.close * 0.95)}附近再考慮\n激進：等日線出現止跌信號（長下影線/吞噬）再進場\n停損：跌破${fp(tradePlan.stopLoss)}確認有效\n止盈：${fp(tradePlan.target1)}（賣半）→ ${fp(tradePlan.target2)}（清倉）`
+        : `激進：${fp(keySupport)}～${fp(keySupport + atr * 0.5)} 區域\n穩健：等重新站回${fp(sma20 ?? 0)}以上\n停損：跌破${fp(tradePlan.stopLoss)}確認有效\n止盈：${fp(tradePlan.target1)}（賣半）→ ${fp(tradePlan.target2)}（清倉）`
+      : `目前不建議追高\n等回測${fp(keySupport)}支撐再考慮`;
 
     const riskFactors: string[] = [];
     if (!macdBullish) riskFactors.push(`MACD${macdConverging ? "\u5373\u5C07" : "\u5DF2"}\u6B7B\u53C9`);

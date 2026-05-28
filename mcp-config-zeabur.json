@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "stock-analysis": {
+      "command": "npx",
+      "args": ["tsx", "src/mcp/server.ts"],
+      "cwd": "/app",
+      "env": {
+        "TRADINGVIEW_SESSION": "${TRADINGVIEW_SESSION}",
+        "TRADINGVIEW_SIGNATURE": "${TRADINGVIEW_SIGNATURE}"
+      }
+    }
+  }
+}
