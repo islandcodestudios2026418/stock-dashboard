@@ -1,12 +1,11 @@
 import { NextRequest, NextResponse } from "next/server";
 import { OHLCV, getIndicatorSummary, calcRiskScore } from "@/lib/indicators";
 import { calcSupportResistance, calcTradePlan } from "@/lib/levels";
+import { promises as fs } from "fs";
+import path from "path";
 
-const ANTHROPIC_API_KEY = process.env.ANTHROPIC_API_KEY || "";
-
-// In-memory daily cache: key = "SYMBOL:DATE" → analysis result
+// Daily cache: "SYMBOL:DATE" → result
 const cache = new Map<string, { result: string; ts: number }>();
-
 function todayKey(symbol: string) {
   const d = new Date();
   return `${symbol}:${d.getFullYear()}-${d.getMonth() + 1}-${d.getDate()}`;
@@ -37,27 +36,7 @@ const SYSTEM_PROMPT = `你是專業技術分析師。根據提供的數據，按
 - 每個結論附數據依據
 - 繁體中文，簡潔有力`;
 
-export async function POST(req: NextRequest) {
-  const { symbol, periods, lang = "zh-TW" } = await req.json() as {
-    symbol: string; periods: OHLCV[]; lang?: string;
-  };
-
-  if (!ANTHROPIC_API_KEY) {
-    return NextResponse.json({ error: "ANTHROPIC_API_KEY not set" }, { status: 500 });
-  }
-
-  if (!periods || periods.length < 20) {
-    return NextResponse.json({ error: "Not enough data" }, { status: 400 });
-  }
-
-  // Check cache
-  const key = todayKey(symbol);
-  const cached = cache.get(key);
-  if (cached) {
-    return NextResponse.json({ analysis: cached.result, cached: true });
-  }
-
-  // Compute indicators
+function buildDataPrompt(symbol: string, periods: OHLCV[]) {
   const indicators = getIndicatorSummary(periods);
   const riskScore = calcRiskScore(periods);
   const levels = calcSupportResistance(periods);
@@ -66,8 +45,7 @@ export async function POST(req: NextRequest) {
   const prev = periods[periods.length - 2];
   const changePct = ((last.close - prev.close) / prev.close * 100).toFixed(2);
 
-  // Build data summary for Claude
-  const dataPrompt = `股票：${symbol}
+  return `股票：${symbol}
 現價：${last.close}（${+changePct > 0 ? "+" : ""}${changePct}%）
 開：${last.open} 高：${last.high} 低：${last.low} 量：${last.volume}
 
@@ -89,35 +67,120 @@ export async function POST(req: NextRequest) {
 - R:R：${tradePlan?.riskReward ?? "N/A"}
 
 風險分數：${riskScore}/10`;
+}
+
+// --- Provider: Anthropic ---
+async function callAnthropic(apiKey: string, dataPrompt: string): Promise<string> {
+  const res = await fetch("https://api.anthropic.com/v1/messages", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+    body: JSON.stringify({ model: "claude-opus-4-0", max_tokens: 2000, system: SYSTEM_PROMPT, messages: [{ role: "user", content: dataPrompt }] }),
+  });
+  if (!res.ok) throw new Error(`Anthropic ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  return data.content?.[0]?.text || "No response";
+}
+
+// --- Provider: OpenAI ---
+async function callOpenAI(apiKey: string, dataPrompt: string): Promise<string> {
+  const res = await fetch("https://api.openai.com/v1/chat/completions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json", "Authorization": `Bearer ${apiKey}` },
+    body: JSON.stringify({ model: "gpt-4o", max_tokens: 2000, messages: [{ role: "system", content: SYSTEM_PROMPT }, { role: "user", content: dataPrompt }] }),
+  });
+  if (!res.ok) throw new Error(`OpenAI ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  return data.choices?.[0]?.message?.content || "No response";
+}
+
+// --- Provider: Google Gemini ---
+async function callGemini(apiKey: string, dataPrompt: string): Promise<string> {
+  const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-pro:generateContent?key=${apiKey}`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ system_instruction: { parts: [{ text: SYSTEM_PROMPT }] }, contents: [{ parts: [{ text: dataPrompt }] }] }),
+  });
+  if (!res.ok) throw new Error(`Gemini ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  return data.candidates?.[0]?.content?.parts?.[0]?.text || "No response";
+}
+
+// --- Provider: kiro-cli (polling) ---
+const REQUESTS_DIR = path.join(process.cwd(), ".ai-requests");
+const RESULTS_DIR = path.join(process.cwd(), ".ai-results");
+
+async function callKiroCli(symbol: string, dataPrompt: string): Promise<string> {
+  await fs.mkdir(REQUESTS_DIR, { recursive: true });
+  await fs.mkdir(RESULTS_DIR, { recursive: true });
+
+  const id = `${symbol.replace(/[^a-zA-Z0-9]/g, "_")}_${Date.now()}`;
+  const requestFile = path.join(REQUESTS_DIR, `${id}.json`);
+  const resultFile = path.join(RESULTS_DIR, `${id}.json`);
+
+  // Write request for kiro-cli watcher to pick up
+  await fs.writeFile(requestFile, JSON.stringify({ id, symbol, system: SYSTEM_PROMPT, prompt: dataPrompt, ts: Date.now() }));
+
+  // Poll for result (max 90 seconds)
+  const deadline = Date.now() + 90_000;
+  while (Date.now() < deadline) {
+    try {
+      const raw = await fs.readFile(resultFile, "utf-8");
+      const result = JSON.parse(raw);
+      // Cleanup
+      await fs.unlink(requestFile).catch(() => {});
+      await fs.unlink(resultFile).catch(() => {});
+      return result.analysis || "No response from kiro-cli";
+    } catch { /* not ready yet */ }
+    await new Promise(r => setTimeout(r, 2000));
+  }
+
+  // Timeout - cleanup request
+  await fs.unlink(requestFile).catch(() => {});
+  throw new Error("kiro-cli analysis timeout (90s). Is the watcher running?");
+}
+
+export async function POST(req: NextRequest) {
+  const { symbol, periods, provider = "kiro", apiKey } = await req.json() as {
+    symbol: string; periods: OHLCV[]; provider?: "anthropic" | "openai" | "gemini" | "kiro"; apiKey?: string;
+  };
+
+  if (!periods || periods.length < 20) {
+    return NextResponse.json({ error: "Not enough data" }, { status: 400 });
+  }
+
+  // Check cache
+  const key = todayKey(symbol);
+  const cached = cache.get(key);
+  if (cached) {
+    return NextResponse.json({ analysis: cached.result, cached: true, provider });
+  }
+
+  const dataPrompt = buildDataPrompt(symbol, periods);
 
   try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-opus-4-0",
-        max_tokens: 2000,
-        system: SYSTEM_PROMPT,
-        messages: [{ role: "user", content: dataPrompt }],
-      }),
-    });
+    let analysis: string;
 
-    if (!res.ok) {
-      const err = await res.text();
-      return NextResponse.json({ error: `Claude API error: ${res.status} ${err}` }, { status: 502 });
+    switch (provider) {
+      case "anthropic":
+        if (!apiKey) return NextResponse.json({ error: "請提供 Anthropic API Key" }, { status: 400 });
+        analysis = await callAnthropic(apiKey, dataPrompt);
+        break;
+      case "openai":
+        if (!apiKey) return NextResponse.json({ error: "請提供 OpenAI API Key" }, { status: 400 });
+        analysis = await callOpenAI(apiKey, dataPrompt);
+        break;
+      case "gemini":
+        if (!apiKey) return NextResponse.json({ error: "請提供 Google Gemini API Key" }, { status: 400 });
+        analysis = await callGemini(apiKey, dataPrompt);
+        break;
+      case "kiro":
+      default:
+        analysis = await callKiroCli(symbol, dataPrompt);
+        break;
     }
 
-    const data = await res.json();
-    const analysis = data.content?.[0]?.text || "No response";
-
-    // Cache for today
     cache.set(key, { result: analysis, ts: Date.now() });
-
-    return NextResponse.json({ analysis, cached: false });
+    return NextResponse.json({ analysis, cached: false, provider });
   } catch (e: unknown) {
     const msg = e instanceof Error ? e.message : "Unknown error";
     return NextResponse.json({ error: msg }, { status: 500 });

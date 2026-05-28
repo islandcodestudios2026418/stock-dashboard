@@ -29,6 +29,19 @@ export default function Home() {
   const [aiAnalysis, setAiAnalysis] = useState("");
   const [aiLoading, setAiLoading] = useState(false);
   const [aiCached, setAiCached] = useState(false);
+  const [aiProvider, setAiProvider] = useState<"kiro" | "anthropic" | "openai" | "gemini">("kiro");
+  const [showSettings, setShowSettings] = useState(false);
+  const [apiKeys, setApiKeys] = useState<Record<string, string>>({});
+
+  // Load API keys from localStorage on mount
+  useState(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("ai-api-keys");
+      if (saved) setApiKeys(JSON.parse(saved));
+      const savedProvider = localStorage.getItem("ai-provider");
+      if (savedProvider) setAiProvider(savedProvider as typeof aiProvider);
+    }
+  });
 
   const fetchAnalysis = useCallback(async (stockData: StockData, overrideLang?: string) => {
     setAnalysisLoading(true);
@@ -52,14 +65,14 @@ export default function Home() {
       const res = await fetch("/api/ai-analysis", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ symbol: stockData.symbol, periods: stockData.periods, lang }),
+        body: JSON.stringify({ symbol: stockData.symbol, periods: stockData.periods, lang, provider: aiProvider, apiKey: apiKeys[aiProvider] || undefined }),
       });
       const json = await res.json();
       if (json.error) { setAiAnalysis(`⚠️ ${json.error}`); }
       else { setAiAnalysis(json.analysis || ""); setAiCached(json.cached || false); }
     } catch { setAiAnalysis("Failed to fetch AI analysis"); }
     finally { setAiLoading(false); }
-  }, [lang]);
+  }, [lang, aiProvider, apiKeys]);
 
   const fetchStock = useCallback(async (symbol: string, tf?: string) => {
     setLoading(true);
@@ -208,23 +221,46 @@ export default function Home() {
           {/* AI Analysis */}
           <div className="col-span-12 glass-card p-4 border border-[rgba(168,85,247,0.3)]">
             <div className="flex items-center justify-between mb-3">
-              <h3 className="text-sm font-bold text-purple-400">🤖 AI 深度分析（Claude Opus 4）</h3>
+              <h3 className="text-sm font-bold text-purple-400">🤖 AI 深度分析</h3>
               <div className="flex items-center gap-2">
-                {aiCached && <span className="text-xs text-[var(--text-secondary)]">📦 今日快取</span>}
+                {aiCached && <span className="text-xs text-[var(--text-secondary)]">📦 快取</span>}
+                <select value={aiProvider} onChange={e => { const v = e.target.value as typeof aiProvider; setAiProvider(v); if (typeof window !== "undefined") localStorage.setItem("ai-provider", v); }}
+                  className="px-2 py-1 text-xs rounded bg-[var(--card-bg)] border border-[rgba(168,85,247,0.3)] text-purple-300">
+                  <option value="kiro">🆓 Kiro CLI</option>
+                  <option value="anthropic">Anthropic</option>
+                  <option value="openai">OpenAI</option>
+                  <option value="gemini">Gemini</option>
+                </select>
+                <button onClick={() => setShowSettings(!showSettings)}
+                  className="px-2 py-1 text-xs rounded border border-[rgba(168,85,247,0.3)] text-purple-300 hover:bg-purple-500/20">⚙️</button>
                 <button onClick={() => fetchAiAnalysis(data)}
                   disabled={aiLoading}
                   className="px-3 py-1 text-xs rounded border border-purple-500 text-purple-300 hover:bg-purple-500/20 disabled:opacity-50">
-                  {aiLoading ? "分析中..." : "🧠 啟動 AI 分析"}
+                  {aiLoading ? "分析中..." : "🧠 啟動分析"}
                 </button>
               </div>
             </div>
+            {showSettings && (
+              <div className="mb-3 p-3 rounded bg-[rgba(168,85,247,0.05)] border border-[rgba(168,85,247,0.2)]">
+                <p className="text-xs text-[var(--text-secondary)] mb-2">API Keys（存在瀏覽器 localStorage，不會上傳伺服器以外的地方）</p>
+                {(["anthropic", "openai", "gemini"] as const).map(p => (
+                  <div key={p} className="flex items-center gap-2 mb-1">
+                    <span className="text-xs w-20 text-[var(--text-secondary)]">{p}</span>
+                    <input type="password" placeholder={`${p} API key`} value={apiKeys[p] || ""}
+                      onChange={e => { const next = { ...apiKeys, [p]: e.target.value }; setApiKeys(next); if (typeof window !== "undefined") localStorage.setItem("ai-api-keys", JSON.stringify(next)); }}
+                      className="flex-1 px-2 py-1 text-xs rounded bg-[var(--card-bg)] border border-[var(--border)] text-[var(--text-primary)]" />
+                  </div>
+                ))}
+                <p className="text-xs text-purple-400 mt-2">Kiro CLI = 免費（由伺服器的 kiro-cli 處理，較慢約30-60秒）</p>
+              </div>
+            )}
             {aiAnalysis && (
               <div className="text-sm leading-relaxed whitespace-pre-wrap text-[var(--text-primary)]">
                 {aiAnalysis}
               </div>
             )}
             {!aiAnalysis && !aiLoading && (
-              <p className="text-xs text-[var(--text-secondary)]">點擊按鈕啟動 AI 分析，每支股票每天分析一次（快取）</p>
+              <p className="text-xs text-[var(--text-secondary)]">選擇 AI 提供者後點擊「啟動分析」。Kiro CLI 免費但較慢，BYOK 即時但需自備 key。</p>
             )}
           </div>
         </div>
