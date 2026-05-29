@@ -8,8 +8,9 @@ export async function GET(req: NextRequest) {
   const yahooSymbol = symbol.startsWith("TWSE:") ? `${raw}.TW` : raw;
 
   try {
-    const yahooFinance = (await import("yahoo-finance2")).default;
-    const result: any = await yahooFinance.search(yahooSymbol, { newsCount: 8 });
+    const YahooFinance = (await import("yahoo-finance2")).default;
+    const yf = new YahooFinance({ suppressNotices: ["yahooSurvey"], validation: { logErrors: false } });
+    const result: any = await yf.search(yahooSymbol, { newsCount: 8 }, { validateResult: false });
     const news = (result.news || []).map((n: any) => ({
       title: n.title,
       link: n.link,

@@ -9,9 +9,10 @@ export async function GET(req: NextRequest) {
   const yahooSymbol = symbol.startsWith("TWSE:") ? `${raw}.TW` : raw;
 
   try {
-    const yahooFinance = (await import("yahoo-finance2")).default;
-    const data: any = await yahooFinance.quoteSummary(yahooSymbol, {
-      modules: ["price", "summaryDetail", "defaultKeyStatistics", "financialData", "earningsQuarterlyGrowth"],
+    const YahooFinance = (await import("yahoo-finance2")).default;
+    const yf = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
+    const data: any = await yf.quoteSummary(yahooSymbol, {
+      modules: ["price", "summaryDetail", "defaultKeyStatistics", "financialData"],
     });
 
     const price = data.price;
