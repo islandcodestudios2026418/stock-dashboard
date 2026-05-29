@@ -1,7 +1,4 @@
 import { NextRequest, NextResponse } from "next/server";
-import YahooFinance from "yahoo-finance2";
-
-const yf = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
 
 export async function GET(req: NextRequest) {
   const symbol = req.nextUrl.searchParams.get("symbol") || "";
@@ -11,7 +8,9 @@ export async function GET(req: NextRequest) {
   const yahooSymbol = symbol.startsWith("TWSE:") ? `${raw}.TW` : raw;
 
   try {
-    const data: any = await yf.quoteSummary(yahooSymbol, {
+    const { default: YahooFinance } = await import("yahoo-finance2");
+    const yahooFinance = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
+    const data: any = await yahooFinance.quoteSummary(yahooSymbol, {
       modules: ["price", "summaryDetail", "defaultKeyStatistics", "financialData"],
     });
 
