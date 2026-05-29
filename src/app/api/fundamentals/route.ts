@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
+import YahooFinance from "yahoo-finance2";
+
+const yf = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
 
 export async function GET(req: NextRequest) {
   const symbol = req.nextUrl.searchParams.get("symbol") || "";
   if (!symbol) return NextResponse.json({ error: "No symbol" }, { status: 400 });
 
-  // Convert TradingView format to Yahoo format (NASDAQ:AAPL -> AAPL, TWSE:2330 -> 2330.TW)
   const raw = symbol.includes(":") ? symbol.split(":")[1] : symbol;
   const yahooSymbol = symbol.startsWith("TWSE:") ? `${raw}.TW` : raw;
 
   try {
-    const YahooFinance = (await import("yahoo-finance2")).default;
-    const yf = new YahooFinance({ suppressNotices: ["yahooSurvey"] });
     const data: any = await yf.quoteSummary(yahooSymbol, {
       modules: ["price", "summaryDetail", "defaultKeyStatistics", "financialData"],
     });
