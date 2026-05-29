@@ -23,17 +23,21 @@ function fmtNum(n: number | null, d = 2) { return n != null ? n.toFixed(d) : "�
 export default function FundamentalsPanel({ symbol, lang = "zh-TW" }: { symbol: string; lang?: string }) {
   const [data, setData] = useState<FundData | null>(null);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!symbol) return;
     setLoading(true);
+    setError("");
     fetch(`/api/fundamentals?symbol=${encodeURIComponent(symbol)}`)
-      .then(r => r.json()).then(d => { if (!d.error) setData(d); setLoading(false); })
-      .catch(() => setLoading(false));
+      .then(r => r.json())
+      .then(d => { if (!d.error) setData(d); else setError(d.error); })
+      .catch(e => setError(String(e)))
+      .finally(() => setLoading(false));
   }, [symbol]);
 
   if (loading) return <div className="glass-card p-3 animate-pulse"><div className="h-3 bg-[rgba(0,240,255,0.1)] rounded w-1/2" /></div>;
-  if (!data) return null;
+  if (!data) return <div className="glass-card p-3"><span className="text-xs text-[var(--text-secondary)]">{error || (lang === "en" ? "No fundamentals data" : "無基本面資料")}</span></div>;
 
   const en = lang === "en";
   const rows: [string, string][] = [

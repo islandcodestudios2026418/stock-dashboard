@@ -136,7 +136,7 @@ export default function Home() {
       )}
 
       {data && !loading && (
-        <div className="flex-1 grid grid-cols-12 grid-rows-[420px_1fr] gap-3 min-h-[700px]">
+        <div className="flex-1 grid grid-cols-12 grid-rows-[420px_auto_auto_auto] gap-3 min-h-[700px]">
 
           {/* TOP-LEFT: Snapshot */}
           <div className="col-span-2 row-span-1 overflow-y-auto">

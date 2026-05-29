@@ -6,17 +6,21 @@ interface NewsItem { title: string; link: string; publisher: string; publishedAt
 export default function NewsPanel({ symbol, lang = "zh-TW" }: { symbol: string; lang?: string }) {
   const [news, setNews] = useState<NewsItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   useEffect(() => {
     if (!symbol) return;
     setLoading(true);
+    setError("");
     fetch(`/api/news?symbol=${encodeURIComponent(symbol)}`)
-      .then(r => r.json()).then(d => { if (Array.isArray(d)) setNews(d); setLoading(false); })
-      .catch(() => setLoading(false));
+      .then(r => r.json())
+      .then(d => { if (Array.isArray(d)) setNews(d); else setError(d.error || "Failed"); })
+      .catch(e => setError(String(e)))
+      .finally(() => setLoading(false));
   }, [symbol]);
 
   if (loading) return <div className="glass-card p-3 animate-pulse"><div className="h-3 bg-[rgba(0,240,255,0.1)] rounded w-1/2" /></div>;
-  if (news.length === 0) return null;
+  if (news.length === 0) return <div className="glass-card p-3"><span className="text-xs text-[var(--text-secondary)]">{error || (lang === "en" ? "No news" : "無新聞")}</span></div>;
 
   const en = lang === "en";
 
