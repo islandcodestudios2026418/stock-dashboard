@@ -7,6 +7,14 @@ export async function GET(req: NextRequest) {
   const symbol = req.nextUrl.searchParams.get("symbol") || "NASDAQ:TSLA";
   const tf = req.nextUrl.searchParams.get("timeframe") || "1D";
 
+  // Input validation
+  if (!/^[A-Z]{2,10}:[A-Z0-9._]{1,20}$/i.test(symbol)) {
+    return NextResponse.json({ error: "Invalid symbol format" }, { status: 400 });
+  }
+  if (!/^(1|5|15|60|1D|1W|1M)$/.test(tf)) {
+    return NextResponse.json({ error: "Invalid timeframe" }, { status: 400 });
+  }
+
   try {
     const TradingView = await import("@mathieuc/tradingview");
     const client = new TradingView.Client({ token: TV_SESSION, signature: TV_SIGNATURE });

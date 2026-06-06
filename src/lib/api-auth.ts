@@ -8,9 +8,13 @@ function getValidKeys(): Set<string> {
 }
 
 export function checkApiKey(req: NextRequest): NextResponse | null {
-  const key = req.headers.get("x-api-key") || req.nextUrl.searchParams.get("api_key") || "";
+  // Only accept API key via header (never URL — avoids logging/leakage)
+  const key = req.headers.get("x-api-key") || "";
   const validKeys = getValidKeys();
-  if (validKeys.size === 0) return null; // no keys configured = open access
+  if (validKeys.size === 0) {
+    // Fail closed: no keys configured = reject all requests
+    return NextResponse.json({ error: "API 未設定金鑰", code: "MISCONFIGURED" }, { status: 500 });
+  }
   if (!validKeys.has(key)) {
     return NextResponse.json({ error: "無效的 API Key", code: "UNAUTHORIZED" }, { status: 401 });
   }
