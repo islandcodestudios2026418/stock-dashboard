@@ -7,6 +7,22 @@
     "TRADINGVIEW_SIGNATURE": "${TRADINGVIEW_SIGNATURE}",
     "CRON_SECRET": "${CRON_SECRET}",
     "WATCHLIST": "${WATCHLIST}",
-    "ZEABUR_URL": "${ZEABUR_URL}"
+    "ZEABUR_URL": "${ZEABUR_URL}",
+    "DISCORD_WEBHOOK_URL": "${DISCORD_WEBHOOK_URL}"
+  },
+  "cron": [
+    {
+      "schedule": "30 12 * * 1-5",
+      "path": "/api/cron/trigger?secret=${CRON_SECRET}",
+      "comment": "US stocks: 20:30 Taiwan (12:30 UTC) weekdays, 30min before market open"
+    },
+    {
+      "schedule": "0 0 * * 1-5",
+      "path": "/api/cron/trigger?secret=${CRON_SECRET}",
+      "comment": "TW stocks: 08:00 Taiwan (00:00 UTC) weekdays, 30min before TWSE open"
+    }
+  ],
+  "health_check": {
+    "path": "/api/cron/health"
   }
 }

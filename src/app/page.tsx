@@ -11,6 +11,7 @@ import SectorHeatmap from "@/components/SectorHeatmap";
 import Watchlist from "@/components/Watchlist";
 import FundamentalsPanel from "@/components/FundamentalsPanel";
 import NewsPanel from "@/components/NewsPanel";
+import DailyAnalysis from "@/components/DailyAnalysis";
 import { OHLCV, getIndicatorSummary, calcRiskScore } from "@/lib/indicators";
 import { PriceLevel, TradePlan } from "@/lib/levels";
 
@@ -121,6 +122,7 @@ export default function Home() {
       {/* Macro overview - always visible */}
       <MacroPanel lang={lang} />
       <SectorHeatmap lang={lang} />
+      <DailyAnalysis onSelect={fetchStock} />
 
       {loading && (
         <div className="flex-1 flex items-center justify-center">
