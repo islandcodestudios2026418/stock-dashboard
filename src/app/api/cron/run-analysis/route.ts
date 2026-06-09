@@ -1,9 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import path from "path";
 import { getIndicatorSummary, calcRiskScore, type OHLCV } from "@/lib/indicators";
 import { calcSupportResistance, calcTradePlan } from "@/lib/levels";
 import { runMultiAgentScoring } from "@/lib/multi-agent-scoring";
+import { getSupabase } from "@/lib/supabase";
 
 // POST /api/cron/run-analysis
 // Fetches price data, computes indicators + multi-agent scores, caches results.
@@ -71,11 +70,18 @@ async function notifyDiscord(results: { symbol: string; status: string; consensu
 export async function POST(req: NextRequest) {
   if (!checkAuth(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const watchlist = (process.env.WATCHLIST || "NASDAQ:TSLA,NASDAQ:NVDA,NASDAQ:AAPL,TWSE:2330,TWSE:2454").split(",");
-  const today = new Date().toISOString().split("T")[0];
-  const cacheDir = path.join(process.cwd(), ".analysis-cache");
-  await fs.mkdir(cacheDir, { recursive: true });
+  const supabase = getSupabase();
 
+  // Fetch watchlist from Supabase, fallback to env var
+  let watchlist: string[];
+  const { data: wlData } = await supabase.from("watchlists").select("symbol").eq("active", true);
+  if (wlData && wlData.length > 0) {
+    watchlist = wlData.map(r => r.symbol);
+  } else {
+    watchlist = (process.env.WATCHLIST || "NASDAQ:TSLA,NASDAQ:NVDA,NASDAQ:AAPL,TWSE:2330,TWSE:2454").split(",");
+  }
+
+  const today = new Date().toISOString().split("T")[0];
   const results: { symbol: string; status: string; consensus?: boolean; avgScore?: number }[] = [];
 
   for (const symbol of watchlist) {
@@ -95,19 +101,21 @@ export async function POST(req: NextRequest) {
       const last = periods[periods.length - 1];
       const analysis = buildAnalysis(symbol, last, indicators, riskScore, levels, tradePlan, scoring);
 
-      const cacheFile = path.join(cacheDir, `${symbol.replace(/[:/]/g, "_")}_${today}.json`);
-      await fs.writeFile(cacheFile, JSON.stringify({
-        symbol, date: today, analysis, indicators, tradePlan, scoring, ts: Date.now(),
-      }));
+      // Write to Supabase (upsert on symbol+date)
+      await supabase.from("analysis_results").upsert({
+        symbol, date: today, analysis,
+        scoring: { consensus: scoring.consensus, avgScore: scoring.avgScore, agents: scoring.agents, recommendation: scoring.recommendation },
+        indicators, trade_plan: tradePlan, ts: Date.now(),
+      }, { onConflict: "symbol,date" });
+
       results.push({ symbol, status: scoring.consensus ? "🟢 共識通過" : "⚪ 完成", consensus: scoring.consensus, avgScore: scoring.avgScore });
     } catch (e) {
       results.push({ symbol, status: `❌ ${e instanceof Error ? e.message : String(e)}` });
     }
   }
 
-  // Write run summary
-  const summaryFile = path.join(cacheDir, `_last_run.json`);
-  await fs.writeFile(summaryFile, JSON.stringify({ date: today, ts: Date.now(), results }));
+  // Write run summary to Supabase
+  await supabase.from("analysis_runs").upsert({ date: today, ts: Date.now(), results }, { onConflict: "date" });
 
   // Discord notification
   await notifyDiscord(results, today);
