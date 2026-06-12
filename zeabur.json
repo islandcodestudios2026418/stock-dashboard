@@ -10,18 +10,25 @@
     "ZEABUR_URL": "${ZEABUR_URL}",
     "DISCORD_WEBHOOK_URL": "${DISCORD_WEBHOOK_URL}",
     "NEXT_PUBLIC_SUPABASE_URL": "${NEXT_PUBLIC_SUPABASE_URL}",
-    "SUPABASE_SERVICE_ROLE_KEY": "${SUPABASE_SERVICE_ROLE_KEY}"
+    "SUPABASE_SERVICE_ROLE_KEY": "${SUPABASE_SERVICE_ROLE_KEY}",
+    "TELEGRAM_BOT_TOKEN": "${TELEGRAM_BOT_TOKEN}",
+    "TELEGRAM_CHAT_ID": "${TELEGRAM_CHAT_ID}"
   },
   "cron": [
     {
       "schedule": "30 12 * * 1-5",
       "path": "/api/cron/trigger?secret=${CRON_SECRET}",
-      "comment": "US stocks: 20:30 Taiwan (12:30 UTC) weekdays, 30min before market open"
+      "comment": "US pre-market: 20:30 Taiwan (12:30 UTC) weekdays"
     },
     {
       "schedule": "0 0 * * 1-5",
       "path": "/api/cron/trigger?secret=${CRON_SECRET}",
-      "comment": "TW stocks: 08:00 Taiwan (00:00 UTC) weekdays, 30min before TWSE open"
+      "comment": "TW pre-market: 08:00 Taiwan (00:00 UTC) weekdays"
+    },
+    {
+      "schedule": "30 13 * * 1-5",
+      "path": "/api/cron/trigger?secret=${CRON_SECRET}",
+      "comment": "Asia close scan: 21:30 Taiwan (13:30 UTC) weekdays, captures TWSE/HKEX close"
     }
   ],
   "health_check": {

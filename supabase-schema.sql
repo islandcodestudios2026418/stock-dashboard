@@ -56,3 +56,21 @@ create policy "anon_read_watchlists" on watchlists for select to anon using (tru
 create policy "service_all_results" on analysis_results for all to service_role using (true);
 create policy "service_all_runs" on analysis_runs for all to service_role using (true);
 create policy "service_all_watchlists" on watchlists for all to service_role using (true);
+
+
+-- 4. Backtest results (walk-forward simulation output)
+create table if not exists backtest_results (
+  id bigint generated always as identity primary key,
+  symbol text not null,
+  run_date text not null, -- date the backtest was run
+  config jsonb not null,
+  picks jsonb not null,
+  summary jsonb not null,
+  unique(symbol, run_date)
+);
+
+create index idx_backtest_symbol on backtest_results(symbol, run_date desc);
+
+alter table backtest_results enable row level security;
+create policy "anon_read_backtest" on backtest_results for select to anon using (true);
+create policy "service_all_backtest" on backtest_results for all to service_role using (true);

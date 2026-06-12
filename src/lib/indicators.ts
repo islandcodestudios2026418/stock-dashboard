@@ -137,3 +137,77 @@ export function calcRiskScore(data: OHLCV[]): number {
 
   return Math.min(10, Math.max(1, Math.round(score)));
 }
+
+
+// ADX (Average Directional Index) — trend strength indicator
+export function calcADX(data: OHLCV[], period = 14): number[] {
+  const adx: number[] = new Array(data.length).fill(0);
+  if (data.length < period * 2) return adx;
+
+  const trueRanges: number[] = [];
+  const plusDM: number[] = [];
+  const minusDM: number[] = [];
+
+  for (let i = 1; i < data.length; i++) {
+    const high = data[i].high, low = data[i].low, prevClose = data[i - 1].close;
+    trueRanges.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
+    const upMove = data[i].high - data[i - 1].high;
+    const downMove = data[i - 1].low - data[i].low;
+    plusDM.push(upMove > downMove && upMove > 0 ? upMove : 0);
+    minusDM.push(downMove > upMove && downMove > 0 ? downMove : 0);
+  }
+
+  // Smoothed using Wilder's method
+  let atr = trueRanges.slice(0, period).reduce((a, b) => a + b, 0);
+  let sPlusDM = plusDM.slice(0, period).reduce((a, b) => a + b, 0);
+  let sMinusDM = minusDM.slice(0, period).reduce((a, b) => a + b, 0);
+
+  const dx: number[] = [];
+  for (let i = period; i < trueRanges.length; i++) {
+    if (i > period) {
+      atr = atr - atr / period + trueRanges[i];
+      sPlusDM = sPlusDM - sPlusDM / period + plusDM[i];
+      sMinusDM = sMinusDM - sMinusDM / period + minusDM[i];
+    }
+    const pdi = atr > 0 ? (sPlusDM / atr) * 100 : 0;
+    const mdi = atr > 0 ? (sMinusDM / atr) * 100 : 0;
+    const dxVal = pdi + mdi > 0 ? (Math.abs(pdi - mdi) / (pdi + mdi)) * 100 : 0;
+    dx.push(dxVal);
+  }
+
+  // ADX = EMA of DX
+  if (dx.length >= period) {
+    let adxVal = dx.slice(0, period).reduce((a, b) => a + b, 0) / period;
+    const startIdx = period * 2; // offset in original data (1-indexed start + period + period)
+    if (startIdx < adx.length) adx[startIdx] = adxVal;
+    for (let i = 1; i < dx.length - period + 1; i++) {
+      adxVal = (adxVal * (period - 1) + dx[period - 1 + i]) / period;
+      if (startIdx + i < adx.length) adx[startIdx + i] = adxVal;
+    }
+  }
+  return adx;
+}
+
+// Volume-weighted accumulation score (OBV trend + volume on up vs down days)
+export function calcAccumulation(data: OHLCV[], period = 20): { score: number; obv_trend: number } {
+  if (data.length < period) return { score: 0, obv_trend: 0 };
+  const recent = data.slice(-period);
+  let upVol = 0, downVol = 0;
+  for (let i = 1; i < recent.length; i++) {
+    if (recent[i].close > recent[i - 1].close) upVol += recent[i].volume;
+    else downVol += recent[i].volume;
+  }
+  const ratio = upVol + downVol > 0 ? upVol / (upVol + downVol) : 0.5;
+
+  // OBV trend (slope of last 20 OBV values)
+  let obv = 0;
+  const obvArr: number[] = [];
+  for (let i = 1; i < recent.length; i++) {
+    obv += recent[i].close > recent[i - 1].close ? recent[i].volume : -recent[i].volume;
+    obvArr.push(obv);
+  }
+  const obvSlope = obvArr.length > 1 ? (obvArr[obvArr.length - 1] - obvArr[0]) / obvArr.length : 0;
+  const normalizedSlope = obvSlope / (recent[recent.length - 1].volume || 1);
+
+  return { score: ratio, obv_trend: normalizedSlope };
+}

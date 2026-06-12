@@ -7,6 +7,9 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "backtest": "tsx scripts/run-backtest.ts",
+    "check": "tsx scripts/setup-check.ts",
+    "setup": "tsx scripts/setup-supabase.ts",
     "mcp": "tsx src/mcp/server.ts",
     "electron": "electron electron/main.js"
   },

@@ -1,17 +1,20 @@
 import { NextResponse } from "next/server";
-import { promises as fs } from "fs";
-import path from "path";
+import { trySupabase } from "@/lib/supabase";
 
 // GET /api/cron/health — unauthenticated health check for Zeabur
 export async function GET() {
-  const cacheDir = path.join(process.cwd(), ".analysis-cache");
-  const summaryFile = path.join(cacheDir, "_last_run.json");
+  const supabase = trySupabase();
 
   let lastRun: { date: string; ts: number } | null = null;
-  try {
-    const raw = await fs.readFile(summaryFile, "utf-8");
-    lastRun = JSON.parse(raw);
-  } catch { /* no runs yet */ }
+  if (supabase) {
+    const { data } = await supabase
+      .from("analysis_runs")
+      .select("date,ts")
+      .order("date", { ascending: false })
+      .limit(1)
+      .single();
+    if (data) lastRun = data;
+  }
 
   const ageMs = lastRun ? Date.now() - lastRun.ts : Infinity;
   const healthy = lastRun ? ageMs < 172800000 : true; // <2 days or first deploy
@@ -21,5 +24,6 @@ export async function GET() {
     uptime: process.uptime(),
     lastRun: lastRun?.date ?? null,
     ageHours: lastRun ? Math.round(ageMs / 3600000 * 10) / 10 : null,
+    supabase: !!supabase,
   });
 }

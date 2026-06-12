@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getIndicatorSummary, calcRiskScore, type OHLCV } from "@/lib/indicators";
 import { calcSupportResistance, calcTradePlan } from "@/lib/levels";
 import { runMultiAgentScoring } from "@/lib/multi-agent-scoring";
-import { getSupabase } from "@/lib/supabase";
+import { trySupabase } from "@/lib/supabase";
 
 // POST /api/cron/run-analysis
 // Fetches price data, computes indicators + multi-agent scores, caches results.
@@ -34,12 +34,12 @@ async function fetchChart(yahooSymbol: string): Promise<OHLCV[]> {
     }));
 }
 
-async function notifyDiscord(results: { symbol: string; status: string; consensus?: boolean; avgScore?: number }[], date: string) {
+async function notifyDiscord(results: { symbol: string; status: string; consensus?: boolean; avgScore?: number; scoring?: ReturnType<typeof runMultiAgentScoring> }[], date: string) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
 
   const consensusPicks = results.filter(r => r.consensus);
-  const color = consensusPicks.length > 0 ? 0x00ff88 : 0x5865f2; // green if consensus, blue otherwise
+  const color = consensusPicks.length > 0 ? 0x00ff88 : 0x5865f2;
 
   const fields = results.map(r => ({
     name: r.symbol,
@@ -67,22 +67,67 @@ async function notifyDiscord(results: { symbol: string; status: string; consensu
   } catch { /* non-critical */ }
 }
 
+async function notifyTelegram(text: string) {
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  if (!token || !chatId) return;
+  try {
+    await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ chat_id: chatId, text, parse_mode: "HTML" }),
+    });
+  } catch { /* non-critical */ }
+}
+
+// Generate plaintext pre-market summary (for email/Telegram/clipboard)
+function buildTextSummary(results: { symbol: string; status: string; consensus?: boolean; avgScore?: number; scoring?: ReturnType<typeof runMultiAgentScoring> }[], date: string): string {
+  const lines: string[] = [];
+  const consensusPicks = results.filter(r => r.consensus);
+  lines.push(`📊 Pre-Market Scan — ${date}`);
+  lines.push(`${"─".repeat(36)}`);
+
+  if (consensusPicks.length > 0) {
+    lines.push(`🟢 共識標的: ${consensusPicks.map(r => r.symbol).join(", ")}`);
+  } else {
+    lines.push(`⚪ 今日無共識標的`);
+  }
+  lines.push("");
+
+  for (const r of results) {
+    if (!r.scoring) { lines.push(`${r.symbol}: ${r.status}`); continue; }
+    const s = r.scoring;
+    const bar = s.agents.map(a => `${a.agent.split("(")[1]?.replace(")", "") || a.agent}${a.score}`).join(" | ");
+    lines.push(`${r.consensus ? "🟢" : "⚪"} ${r.symbol} — avg ${r.avgScore?.toFixed(0)}/100`);
+    lines.push(`   ${bar}`);
+    lines.push(`   ${s.recommendation}`);
+  }
+
+  lines.push(`${"─".repeat(36)}`);
+  lines.push(`Scanned ${results.length} symbols | Consensus threshold: 65`);
+  return lines.join("\n");
+}
+
 export async function POST(req: NextRequest) {
   if (!checkAuth(req)) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-  const supabase = getSupabase();
+  const dryRun = req.nextUrl.searchParams.get("dry") === "1";
+  const supabase = trySupabase();
 
   // Fetch watchlist from Supabase, fallback to env var
   let watchlist: string[];
-  const { data: wlData } = await supabase.from("watchlists").select("symbol").eq("active", true);
-  if (wlData && wlData.length > 0) {
-    watchlist = wlData.map(r => r.symbol);
+  if (supabase) {
+    const { data: wlData } = await supabase.from("watchlists").select("symbol").eq("active", true);
+    watchlist = wlData && wlData.length > 0 ? wlData.map(r => r.symbol) : [];
   } else {
+    watchlist = [];
+  }
+  if (watchlist.length === 0) {
     watchlist = (process.env.WATCHLIST || "NASDAQ:TSLA,NASDAQ:NVDA,NASDAQ:AAPL,TWSE:2330,TWSE:2454").split(",");
   }
 
   const today = new Date().toISOString().split("T")[0];
-  const results: { symbol: string; status: string; consensus?: boolean; avgScore?: number }[] = [];
+  const results: { symbol: string; status: string; consensus?: boolean; avgScore?: number; scoring?: ReturnType<typeof runMultiAgentScoring> }[] = [];
 
   for (const symbol of watchlist) {
     try {
@@ -101,26 +146,34 @@ export async function POST(req: NextRequest) {
       const last = periods[periods.length - 1];
       const analysis = buildAnalysis(symbol, last, indicators, riskScore, levels, tradePlan, scoring);
 
-      // Write to Supabase (upsert on symbol+date)
-      await supabase.from("analysis_results").upsert({
-        symbol, date: today, analysis,
-        scoring: { consensus: scoring.consensus, avgScore: scoring.avgScore, agents: scoring.agents, recommendation: scoring.recommendation },
-        indicators, trade_plan: tradePlan, ts: Date.now(),
-      }, { onConflict: "symbol,date" });
+      // Write to Supabase if available and not dry-run
+      if (supabase && !dryRun) {
+        await supabase.from("analysis_results").upsert({
+          symbol, date: today, analysis,
+          scoring: { consensus: scoring.consensus, avgScore: scoring.avgScore, agents: scoring.agents, recommendation: scoring.recommendation },
+          indicators, trade_plan: tradePlan, ts: Date.now(),
+        }, { onConflict: "symbol,date" });
+      }
 
-      results.push({ symbol, status: scoring.consensus ? "🟢 共識通過" : "⚪ 完成", consensus: scoring.consensus, avgScore: scoring.avgScore });
+      results.push({
+        symbol, status: scoring.consensus ? "🟢 共識通過" : "⚪ 完成",
+        consensus: scoring.consensus, avgScore: scoring.avgScore, scoring,
+      });
     } catch (e) {
       results.push({ symbol, status: `❌ ${e instanceof Error ? e.message : String(e)}` });
     }
   }
 
-  // Write run summary to Supabase
-  await supabase.from("analysis_runs").upsert({ date: today, ts: Date.now(), results }, { onConflict: "date" });
+  // Write run summary + notify (skip in dry-run)
+  if (supabase && !dryRun) {
+    await supabase.from("analysis_runs").upsert({ date: today, ts: Date.now(), results: results.map(({ scoring: _s, ...r }) => r) }, { onConflict: "date" });
+  }
+  if (!dryRun) await notifyDiscord(results, today);
 
-  // Discord notification
-  await notifyDiscord(results, today);
+  const textSummary = buildTextSummary(results, today);
+  if (!dryRun) await notifyTelegram(textSummary);
 
-  return NextResponse.json({ date: today, results });
+  return NextResponse.json({ date: today, dryRun, supabaseConnected: !!supabase, results: results.map(({ scoring: _s, ...r }) => r), textSummary });
 }
 
 function buildAnalysis(

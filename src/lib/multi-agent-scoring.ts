@@ -1,7 +1,8 @@
 // Multi-agent scoring: 5 independent analyst perspectives score each stock.
 // All 5 must agree (score >= threshold) before flagging a stock as a consensus pick.
+// Optimized for SNDK-like explosive stocks: consensus should be RARE.
 
-import { OHLCV, calcEMA, calcMACD, calcRSI, calcKDJ, calcBOLL, calcSMA } from "./indicators";
+import { OHLCV, calcEMA, calcMACD, calcRSI, calcKDJ, calcBOLL, calcSMA, calcADX, calcAccumulation } from "./indicators";
 
 export interface AgentScore {
   agent: string;
@@ -18,7 +19,7 @@ export interface ConsensusResult {
   recommendation: string;
 }
 
-const CONSENSUS_THRESHOLD = 65; // All agents must score >= this
+const CONSENSUS_THRESHOLD = 65; // Balance: selective enough to be rare, achievable for true breakouts
 
 function toSignal(score: number): AgentScore["signal"] {
   if (score >= 80) return "STRONG_BUY";
@@ -28,207 +29,250 @@ function toSignal(score: number): AgentScore["signal"] {
   return "STRONG_SELL";
 }
 
-// Agent 1: Macro/Structural (interest rate cycle, sector rotation)
+// Agent 1: Macro/Structural — long-term trend + relative strength
 export function scoreMacro(data: OHLCV[]): AgentScore {
   const closes = data.map(d => d.close);
   const last = closes.length - 1;
-  let score = 50;
+  let score = 40; // Start lower — must earn points
   const reasons: string[] = [];
 
-  // Long-term trend (EMA50 vs EMA200 — golden/death cross proxy)
+  // Golden cross (EMA50 > EMA200)
   const ema50 = calcEMA(closes, Math.min(50, closes.length - 1));
   const ema200 = calcEMA(closes, Math.min(200, closes.length - 1));
   if (ema50[last] > ema200[last]) {
-    score += 15;
-    reasons.push("長期趨勢向上(EMA50>200)");
+    score += 12;
+    reasons.push("EMA50>200");
   } else {
     score -= 15;
-    reasons.push("長期趨勢向下(EMA50<200)");
+    reasons.push("EMA50<200 結構空頭");
   }
 
-  // Price above 200EMA = structural uptrend
-  if (closes[last] > ema200[last]) {
-    score += 10;
-    reasons.push("價格在200EMA之上");
-  } else {
-    score -= 10;
-  }
+  // Price above 200EMA
+  if (closes[last] > ema200[last]) score += 8;
+  else score -= 10;
 
-  // 6-month momentum
+  // 6-month relative momentum (must outperform significantly)
   const sixMonthAgo = Math.max(0, last - 126);
   const sixMonthReturn = (closes[last] - closes[sixMonthAgo]) / closes[sixMonthAgo];
-  if (sixMonthReturn > 0.2) { score += 15; reasons.push(`6個月漲${(sixMonthReturn * 100).toFixed(0)}%`); }
-  else if (sixMonthReturn > 0) { score += 5; }
-  else { score -= 10; reasons.push(`6個月跌${(sixMonthReturn * 100).toFixed(0)}%`); }
+  if (sixMonthReturn > 0.5) { score += 20; reasons.push(`6月漲${(sixMonthReturn * 100).toFixed(0)}%爆發`); }
+  else if (sixMonthReturn > 0.2) { score += 12; reasons.push(`6月漲${(sixMonthReturn * 100).toFixed(0)}%`); }
+  else if (sixMonthReturn > 0) { score += 3; }
+  else { score -= 12; reasons.push(`6月跌${(sixMonthReturn * 100).toFixed(0)}%`); }
 
-  // Breakout from multi-month range
-  const highRange = Math.max(...closes.slice(-60));
-  if (closes[last] >= highRange * 0.98) {
-    score += 10;
-    reasons.push("接近60日新高");
+  // New high breakout (must be AT the high, not just near)
+  const high60 = Math.max(...closes.slice(-60));
+  if (closes[last] >= high60) {
+    score += 12;
+    reasons.push("突破60日新高");
+  } else if (closes[last] >= high60 * 0.97) {
+    score += 5;
+    reasons.push("接近60日高");
+  }
+
+  // 3-month acceleration (2nd derivative: recent momentum > earlier momentum)
+  const threeMonthAgo = Math.max(0, last - 63);
+  const firstHalf = (closes[threeMonthAgo] - closes[sixMonthAgo]) / closes[sixMonthAgo];
+  const secondHalf = (closes[last] - closes[threeMonthAgo]) / closes[threeMonthAgo];
+  if (secondHalf > firstHalf && secondHalf > 0.1) {
+    score += 8;
+    reasons.push("動能加速中");
   }
 
   return { agent: "Macro(總經)", score: Math.max(0, Math.min(100, score)), signal: toSignal(score), reasoning: reasons.join("; ") };
 }
 
-// Agent 2: Technical Analysis
+// Agent 2: Technical Analysis — ADX, MACD, RSI, volume
 export function scoreTechnical(data: OHLCV[]): AgentScore {
   const closes = data.map(d => d.close);
   const last = closes.length - 1;
-  let score = 50;
+  let score = 40;
   const reasons: string[] = [];
 
-  // MACD
+  // ADX — trend strength (>25 = trending, >40 = strong trend)
+  const adx = calcADX(data);
+  const adxVal = adx[last] || 0;
+  if (adxVal > 40) { score += 15; reasons.push(`ADX=${adxVal.toFixed(0)}強趨勢`); }
+  else if (adxVal > 25) { score += 8; reasons.push(`ADX=${adxVal.toFixed(0)}趨勢中`); }
+  else { score -= 5; reasons.push(`ADX=${adxVal.toFixed(0)}無趨勢`); }
+
+  // MACD — golden cross gets bonus
   const macd = calcMACD(closes);
   if (macd.dif[last] > macd.dea[last] && macd.dif[last - 1] <= macd.dea[last - 1]) {
-    score += 15; reasons.push("MACD金叉");
+    score += 12; reasons.push("MACD金叉");
+  } else if (macd.dif[last] > macd.dea[last] && macd.histogram[last] > macd.histogram[last - 1]) {
+    score += 7; reasons.push("MACD多頭加速");
   } else if (macd.dif[last] > macd.dea[last]) {
-    score += 5; reasons.push("MACD多頭");
-  } else if (macd.dif[last] < macd.dea[last] && macd.dif[last - 1] >= macd.dea[last - 1]) {
-    score -= 15; reasons.push("MACD死叉");
+    score += 3;
   } else {
-    score -= 5;
+    score -= 8;
   }
 
-  // RSI
+  // RSI — sweet spot 55-70 for momentum stocks
   const rsi = calcRSI(closes);
   const rsiVal = rsi[last] ?? 50;
-  if (rsiVal > 50 && rsiVal < 70) { score += 10; reasons.push(`RSI=${rsiVal.toFixed(0)}健康多頭`); }
-  else if (rsiVal >= 70) { score -= 5; reasons.push("RSI超買"); }
-  else if (rsiVal < 30) { score += 5; reasons.push("RSI超賣反彈機會"); }
-  else { score -= 5; }
+  if (rsiVal >= 55 && rsiVal <= 70) { score += 10; reasons.push(`RSI=${rsiVal.toFixed(0)}健康`); }
+  else if (rsiVal > 70 && rsiVal <= 80) { score += 3; reasons.push("RSI偏高但可追"); }
+  else if (rsiVal > 80) { score -= 10; reasons.push("RSI超買風險"); }
+  else if (rsiVal < 40) { score -= 8; reasons.push("RSI弱勢"); }
 
-  // KDJ
-  const kdj = calcKDJ(data);
-  if (kdj.k[last] > kdj.d[last] && kdj.k[last - 1] <= kdj.d[last - 1]) {
-    score += 10; reasons.push("KDJ金叉");
-  }
-
-  // Bollinger position
-  const boll = calcBOLL(closes);
-  const mid = boll.mid[last];
-  const upper = boll.upper[last];
-  if (mid && upper && closes[last] > mid && closes[last] < upper) {
-    score += 5; reasons.push("價格在布林中上軌間");
-  }
-
-  // Volume confirmation
+  // Volume confirmation — must have volume on breakout
   const avgVol = data.slice(-20).reduce((s, d) => s + d.volume, 0) / 20;
-  if (data[last].volume > avgVol * 1.5 && closes[last] > closes[last - 1]) {
-    score += 10; reasons.push("放量上漲");
+  if (data[last].volume > avgVol * 2 && closes[last] > closes[last - 1]) {
+    score += 12; reasons.push("倍量突破");
+  } else if (data[last].volume > avgVol * 1.5 && closes[last] > closes[last - 1]) {
+    score += 6; reasons.push("放量上漲");
+  }
+
+  // Bollinger squeeze breakout (volatility expansion)
+  const boll = calcBOLL(closes);
+  if (boll.upper[last] && boll.lower[last] && boll.upper[last - 10] && boll.lower[last - 10]) {
+    const bw = (boll.upper[last]! - boll.lower[last]!) / (boll.mid[last] || 1);
+    const bwPrev = (boll.upper[last - 10]! - boll.lower[last - 10]!) / (boll.mid[last - 10] || 1);
+    if (bw > bwPrev * 1.3 && closes[last] > boll.upper[last]! * 0.98) {
+      score += 8; reasons.push("布林帶擴張突破");
+    }
   }
 
   return { agent: "Technical(技術)", score: Math.max(0, Math.min(100, score)), signal: toSignal(score), reasoning: reasons.join("; ") };
 }
 
-// Agent 3: Sentiment/News (approximated from price action patterns)
+// Agent 3: Sentiment/News — price-action proxy for institutional activity
 export function scoreSentiment(data: OHLCV[]): AgentScore {
   const closes = data.map(d => d.close);
   const last = closes.length - 1;
-  let score = 50;
+  let score = 40;
   const reasons: string[] = [];
 
-  // Gap ups (institutional interest signal)
-  const gaps = data.slice(-10).filter((d, i, arr) => i > 0 && d.open > arr[i - 1].close * 1.01);
-  if (gaps.length >= 2) { score += 15; reasons.push(`近10日${gaps.length}次跳空高開`); }
-  else if (gaps.length === 1) { score += 5; reasons.push("近期有跳空高開"); }
+  // Gap ups in last 20 days (institutional catalyst signals)
+  const recentGaps = data.slice(-20).filter((d, i, arr) => i > 0 && d.open > arr[i - 1].close * 1.015);
+  if (recentGaps.length >= 3) { score += 18; reasons.push(`${recentGaps.length}次跳空(主力進場)`); }
+  else if (recentGaps.length >= 2) { score += 10; reasons.push(`${recentGaps.length}次跳空`); }
+  else if (recentGaps.length >= 1) { score += 4; }
 
-  // Consecutive up days (momentum/sentiment)
+  // Consecutive up days
   let upDays = 0;
-  for (let i = last; i > last - 5 && i > 0; i--) {
+  for (let i = last; i > last - 10 && i > 0; i--) {
     if (closes[i] > closes[i - 1]) upDays++; else break;
   }
-  if (upDays >= 4) { score += 10; reasons.push(`連漲${upDays}日`); }
-  else if (upDays >= 2) { score += 5; }
+  if (upDays >= 5) { score += 12; reasons.push(`連漲${upDays}日`); }
+  else if (upDays >= 3) { score += 6; reasons.push(`連漲${upDays}日`); }
 
-  // Volume surge (institutional accumulation)
-  const avgVol = data.slice(-20).reduce((s, d) => s + d.volume, 0) / 20;
-  const recentAvgVol = data.slice(-5).reduce((s, d) => s + d.volume, 0) / 5;
-  if (recentAvgVol > avgVol * 2) {
-    score += 15; reasons.push("近5日成交量倍增(疑似主力進場)");
-  } else if (recentAvgVol > avgVol * 1.3) {
-    score += 5; reasons.push("近期成交量放大");
-  }
+  // Volume surge (20-day vs 60-day comparison — more stable)
+  const avgVol60 = data.slice(-60).reduce((s, d) => s + d.volume, 0) / 60;
+  const avgVol10 = data.slice(-10).reduce((s, d) => s + d.volume, 0) / 10;
+  const volRatio = avgVol60 > 0 ? avgVol10 / avgVol60 : 1;
+  if (volRatio > 2.5) { score += 15; reasons.push(`量能2.5倍(搶貨)`); }
+  else if (volRatio > 1.8) { score += 10; reasons.push(`量能${volRatio.toFixed(1)}倍`); }
+  else if (volRatio > 1.3) { score += 5; reasons.push("溫和放量"); }
 
-  // Wide range candles with close near high (buying pressure)
+  // Wide range candles closing near high (buying pressure)
   const recent = data.slice(-5);
-  const bullishCandles = recent.filter(d => (d.close - d.low) / (d.high - d.low + 0.001) > 0.7);
-  if (bullishCandles.length >= 3) {
-    score += 10; reasons.push("多根強勢K線(收在高點)");
-  }
+  const strongCandles = recent.filter(d => {
+    const range = d.high - d.low;
+    return range > 0 && (d.close - d.low) / range > 0.75 && (d.close - d.open) / d.open > 0.01;
+  });
+  if (strongCandles.length >= 4) { score += 10; reasons.push("連續強勢K線"); }
+  else if (strongCandles.length >= 3) { score += 6; reasons.push("多根強勢K線"); }
+
+  // Up-volume ratio: % of 10-day volume on up-days
+  const last10 = data.slice(-10);
+  const upVol = last10.filter(d => d.close > d.open).reduce((s, d) => s + d.volume, 0);
+  const totalVol = last10.reduce((s, d) => s + d.volume, 0);
+  const upVolRatio = totalVol > 0 ? upVol / totalVol : 0.5;
+  if (upVolRatio > 0.75) { score += 8; reasons.push(`上漲量佔${(upVolRatio * 100).toFixed(0)}%`); }
 
   return { agent: "Sentiment(消息)", score: Math.max(0, Math.min(100, score)), signal: toSignal(score), reasoning: reasons.join("; ") };
 }
 
-// Agent 4: Fundamentals (approximated from price patterns — P/E, growth need real API)
+// Agent 4: Fundamentals — volume accumulation + price quality
 export function scoreFundamentals(data: OHLCV[]): AgentScore {
   const closes = data.map(d => d.close);
   const last = closes.length - 1;
-  let score = 50;
+  let score = 40;
   const reasons: string[] = [];
 
-  // Steady uptrend with low volatility = quality company
+  // Volume accumulation (smart money detection)
+  const accum = calcAccumulation(data, 20);
+  if (accum.score > 0.7 && accum.obv_trend > 0) {
+    score += 18; reasons.push(`量能集中買方(${(accum.score * 100).toFixed(0)}%)`);
+  } else if (accum.score > 0.6) {
+    score += 8; reasons.push("買方量能偏多");
+  } else if (accum.score < 0.4) {
+    score -= 10; reasons.push("賣方量能主導");
+  }
+
+  // Quality uptrend: positive returns with low volatility
   const returns = closes.slice(-60).map((c, i, a) => i === 0 ? 0 : (c - a[i - 1]) / a[i - 1]);
   const vol = Math.sqrt(returns.reduce((s, r) => s + r * r, 0) / returns.length);
   const avgReturn = returns.reduce((s, r) => s + r, 0) / returns.length;
+  const sharpe = vol > 0 ? avgReturn / vol : 0;
 
-  if (avgReturn > 0 && vol < 0.03) { score += 15; reasons.push("穩定上漲低波動(優質基本面)"); }
-  else if (avgReturn > 0) { score += 5; reasons.push("正報酬"); }
-  else { score -= 10; reasons.push("負報酬趨勢"); }
+  if (sharpe > 0.15) { score += 15; reasons.push(`高品質漲勢(Sharpe=${sharpe.toFixed(2)})`); }
+  else if (sharpe > 0.05) { score += 5; }
+  else if (avgReturn < 0) { score -= 12; reasons.push("負報酬"); }
 
-  // New highs frequency (strong earnings likely)
+  // New highs frequency (institutional demand)
   const highs = closes.slice(-60);
   let newHighCount = 0;
+  let runningMax = highs[0];
   for (let i = 1; i < highs.length; i++) {
-    if (highs[i] >= Math.max(...highs.slice(0, i))) newHighCount++;
+    if (highs[i] > runningMax) { newHighCount++; runningMax = highs[i]; }
   }
-  if (newHighCount >= 5) { score += 15; reasons.push(`60日內${newHighCount}次創新高`); }
-  else if (newHighCount >= 2) { score += 5; }
+  if (newHighCount >= 8) { score += 15; reasons.push(`60日${newHighCount}次新高`); }
+  else if (newHighCount >= 4) { score += 7; reasons.push(`${newHighCount}次新高`); }
 
-  // Price acceleration (revenue acceleration proxy)
+  // EMA spread acceleration
   const ema20 = calcEMA(closes, 20);
   const ema50 = calcEMA(closes, Math.min(50, closes.length - 1));
   const spread = ema20[last] - ema50[last];
-  const prevSpread = ema20[last - 10] - ema50[last - 10];
+  const prevSpread = ema20[Math.max(0, last - 10)] - ema50[Math.max(0, last - 10)];
   if (spread > prevSpread && spread > 0) {
-    score += 10; reasons.push("均線差距擴大(成長加速)");
+    score += 8; reasons.push("均線擴張加速");
   }
 
   return { agent: "Fundamentals(基本面)", score: Math.max(0, Math.min(100, score)), signal: toSignal(score), reasoning: reasons.join("; ") };
 }
 
-// Agent 5: Risk Manager
+// Agent 5: Risk Manager — stricter risk controls
 export function scoreRisk(data: OHLCV[]): AgentScore {
   const closes = data.map(d => d.close);
   const last = closes.length - 1;
-  let score = 70; // Start higher — subtract for risk factors
+  let score = 75; // Start high, subtract for risk
   const reasons: string[] = [];
 
   // Max drawdown in last 60 days
-  const high60 = Math.max(...closes.slice(-60));
-  const drawdown = (high60 - closes[last]) / high60;
-  if (drawdown > 0.2) { score -= 30; reasons.push(`回撤${(drawdown * 100).toFixed(0)}%>20%`); }
-  else if (drawdown > 0.1) { score -= 15; reasons.push(`回撤${(drawdown * 100).toFixed(0)}%`); }
-  else { reasons.push(`回撤僅${(drawdown * 100).toFixed(0)}%可控`); }
+  let peak = closes[Math.max(0, last - 59)];
+  let maxDD = 0;
+  for (let i = Math.max(0, last - 59); i <= last; i++) {
+    peak = Math.max(peak, closes[i]);
+    maxDD = Math.min(maxDD, (closes[i] - peak) / peak);
+  }
+  if (maxDD < -0.25) { score -= 35; reasons.push(`回撤${(maxDD * 100).toFixed(0)}%>25%嚴重`); }
+  else if (maxDD < -0.15) { score -= 20; reasons.push(`回撤${(maxDD * 100).toFixed(0)}%`); }
+  else if (maxDD < -0.08) { score -= 8; reasons.push(`回撤${(maxDD * 100).toFixed(0)}%可接受`); }
+  else { score += 5; reasons.push(`回撤僅${(maxDD * 100).toFixed(0)}%健康`); }
 
-  // Volatility
+  // Annualized volatility
   const returns = closes.slice(-20).map((c, i, a) => i === 0 ? 0 : (c - a[i - 1]) / a[i - 1]);
   const vol = Math.sqrt(returns.reduce((s, r) => s + r * r, 0) / returns.length) * Math.sqrt(252);
-  if (vol > 0.6) { score -= 20; reasons.push(`年化波動率${(vol * 100).toFixed(0)}%過高`); }
-  else if (vol > 0.4) { score -= 10; reasons.push(`年化波動率${(vol * 100).toFixed(0)}%偏高`); }
-  else { score += 5; reasons.push(`波動率${(vol * 100).toFixed(0)}%正常`); }
+  if (vol > 0.7) { score -= 25; reasons.push(`波動率${(vol * 100).toFixed(0)}%極高`); }
+  else if (vol > 0.5) { score -= 15; reasons.push(`波動率${(vol * 100).toFixed(0)}%偏高`); }
+  else if (vol > 0.3) { score -= 5; }
+  else { score += 5; reasons.push(`低波動${(vol * 100).toFixed(0)}%`); }
 
-  // Stop loss distance (current price vs SMA20)
+  // Chase risk: far above SMA20 is risky, but less so in strong trends (ADX high)
   const sma20 = calcSMA(closes, 20);
   if (sma20[last]) {
     const dist = (closes[last] - sma20[last]!) / sma20[last]!;
-    if (dist > 0.15) { score -= 10; reasons.push("離均線過遠追高風險"); }
-    else if (dist < -0.05) { score -= 10; reasons.push("跌破均線"); }
+    if (dist > 0.3) { score -= 15; reasons.push("離均線>30%追高風險"); }
+    else if (dist > 0.15) { score -= 5; reasons.push("略離均線"); }
+    else if (dist < -0.05) { score -= 12; reasons.push("跌破SMA20"); }
+    else { score += 3; }
   }
 
-  // Position sizing recommendation based on risk
-  const riskLevel = score >= 65 ? "可重倉" : score >= 40 ? "半倉" : "觀望";
-  reasons.push(`建議倉位: ${riskLevel}`);
+  // Position sizing
+  const riskLevel = score >= 70 ? "可重倉" : score >= 50 ? "半倉" : "輕倉/觀望";
+  reasons.push(`倉位: ${riskLevel}`);
 
   return { agent: "Risk(風控)", score: Math.max(0, Math.min(100, score)), signal: toSignal(score), reasoning: reasons.join("; ") };
 }
@@ -236,32 +280,19 @@ export function scoreRisk(data: OHLCV[]): AgentScore {
 // Orchestrator: run all 5 agents, determine consensus
 export function runMultiAgentScoring(symbol: string, data: OHLCV[]): ConsensusResult {
   if (data.length < 60) {
-    return {
-      symbol,
-      consensus: false,
-      avgScore: 0,
-      agents: [],
-      recommendation: "資料不足(需至少60根K線)",
-    };
+    return { symbol, consensus: false, avgScore: 0, agents: [], recommendation: "資料不足(需至少60根K線)" };
   }
 
-  const agents = [
-    scoreMacro(data),
-    scoreTechnical(data),
-    scoreSentiment(data),
-    scoreFundamentals(data),
-    scoreRisk(data),
-  ];
-
+  const agents = [scoreMacro(data), scoreTechnical(data), scoreSentiment(data), scoreFundamentals(data), scoreRisk(data)];
   const avgScore = agents.reduce((s, a) => s + a.score, 0) / agents.length;
   const consensus = agents.every(a => a.score >= CONSENSUS_THRESHOLD);
   const allBuy = agents.every(a => a.signal === "BUY" || a.signal === "STRONG_BUY");
 
   let recommendation: string;
   if (consensus && allBuy) {
-    recommendation = "🟢 全員共識買入 — 符合SNDK模型條件";
+    recommendation = "🟢 全員共識買入 — 符合SNDK爆發模型";
   } else if (consensus) {
-    recommendation = "🟡 全員通過但非全部看多 — 持續觀察";
+    recommendation = "🟡 全員通過但信號分歧 — 持續觀察";
   } else {
     const bearish = agents.filter(a => a.score < CONSENSUS_THRESHOLD);
     recommendation = `⚪ 未達共識 — ${bearish.map(a => a.agent).join(",")}未通過`;
