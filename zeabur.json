@@ -49,6 +49,11 @@
       "schedule": "30 20 * * 0",
       "path": "/api/cron/watchlist-rotation?secret=${CRON_SECRET}",
       "comment": "Watchlist rotation: Sunday 04:30 Taiwan (20:30 UTC Saturday)"
+    },
+    {
+      "schedule": "0 21 * * 0",
+      "path": "/api/cron/sndk-scanner?secret=${CRON_SECRET}",
+      "comment": "SNDK scanner: Sunday 05:00 Taiwan (21:00 UTC) - scan universe for new candidates"
     }
   ],
   "health_check": {
