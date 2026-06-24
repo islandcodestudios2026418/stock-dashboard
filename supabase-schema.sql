@@ -99,3 +99,9 @@ create index idx_portfolio_status on portfolio_positions(status, symbol);
 alter table portfolio_positions enable row level security;
 create policy "anon_read_portfolio" on portfolio_positions for select to anon using (true);
 create policy "service_all_portfolio" on portfolio_positions for all to service_role using (true);
+
+
+
+-- 6. Migration: add peak_price and closed_at for position monitor (2026-06-24)
+alter table portfolio_positions add column if not exists peak_price numeric;
+alter table portfolio_positions add column if not exists closed_at timestamptz;

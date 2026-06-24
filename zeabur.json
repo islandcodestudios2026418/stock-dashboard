@@ -13,7 +13,11 @@
     "SUPABASE_SERVICE_ROLE_KEY": "${SUPABASE_SERVICE_ROLE_KEY}",
     "TELEGRAM_BOT_TOKEN": "${TELEGRAM_BOT_TOKEN}",
     "TELEGRAM_CHAT_ID": "${TELEGRAM_CHAT_ID}",
-    "FINNHUB_API_KEY": "${FINNHUB_API_KEY}"
+    "FINNHUB_API_KEY": "${FINNHUB_API_KEY}",
+    "IBKR_GATEWAY_URL": "${IBKR_GATEWAY_URL}",
+    "IBKR_ACCOUNT_ID": "${IBKR_ACCOUNT_ID}",
+    "IBKR_LIVE": "${IBKR_LIVE}",
+    "IBKR_AUTO_EXECUTE": "${IBKR_AUTO_EXECUTE}"
   },
   "cron": [
     {
@@ -30,6 +34,11 @@
       "schedule": "30 13 * * 1-5",
       "path": "/api/cron/trigger?secret=${CRON_SECRET}",
       "comment": "Asia close scan: 21:30 Taiwan (13:30 UTC) weekdays, captures TWSE/HKEX close"
+    },
+    {
+      "schedule": "*/5 13-19 * * 1-5",
+      "path": "/api/cron/monitor?secret=${CRON_SECRET}",
+      "comment": "Position monitor: every 5min during US market hours (13:30-20:00 UTC)"
     }
   ],
   "health_check": {

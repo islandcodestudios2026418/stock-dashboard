@@ -1,9 +1,10 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getIndicatorSummary, calcRiskScore, type OHLCV } from "@/lib/indicators";
-import { calcSupportResistance, calcTradePlan } from "@/lib/levels";
+import { calcSupportResistance, calcTradePlan, type TradePlan } from "@/lib/levels";
 import { runMultiAgentScoring, type AgentScore } from "@/lib/multi-agent-scoring";
 import { scoreNewsSentiment } from "@/lib/news-sentiment";
 import { trySupabase } from "@/lib/supabase";
+import { placeBracketOrder, calculatePositionSize } from "@/lib/ibkr-client";
 
 // POST /api/cron/run-analysis
 // Fetches price data, computes indicators + multi-agent scores, caches results.
@@ -35,7 +36,7 @@ async function fetchChart(yahooSymbol: string): Promise<OHLCV[]> {
     }));
 }
 
-async function notifyDiscord(results: { symbol: string; status: string; consensus?: boolean; avgScore?: number; scoring?: ReturnType<typeof runMultiAgentScoring> }[], date: string) {
+async function notifyDiscord(results: { symbol: string; status: string; consensus?: boolean; avgScore?: number }[], date: string) {
   const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
   if (!webhookUrl) return;
 
@@ -82,7 +83,7 @@ async function notifyTelegram(text: string) {
 }
 
 // URGENT alert escalation: fires when consensus pick found
-async function escalateAlert(picks: { symbol: string; avgScore?: number; scoring?: ReturnType<typeof runMultiAgentScoring> }[]) {
+async function escalateAlert(picks: { symbol: string; avgScore?: number; scoring?: ReturnType<typeof runMultiAgentScoring>; tradePlan?: TradePlan | null }[]) {
   if (picks.length === 0) return;
   const token = process.env.TELEGRAM_BOT_TOKEN;
   const chatId = process.env.TELEGRAM_CHAT_ID;
@@ -125,6 +126,33 @@ async function escalateAlert(picks: { symbol: string; avgScore?: number; scoring
         }),
       });
     } catch { /* non-critical */ }
+  }
+
+  // IBKR Auto-execution (Phase 3): place bracket orders for consensus picks
+  if (process.env.IBKR_AUTO_EXECUTE === "true" && process.env.IBKR_ACCOUNT_ID) {
+    for (const pick of picks) {
+      if (!pick.tradePlan) continue;
+      const { entry, stopLoss, target2 } = pick.tradePlan;
+      const raw = pick.symbol.includes(":") ? pick.symbol.split(":")[1] : pick.symbol;
+      const sizing = calculatePositionSize(entry, stopLoss);
+      if (sizing.shares === 0) continue;
+
+      try {
+        const result = await placeBracketOrder({
+          symbol: raw, entryPrice: entry, stopLossPrice: stopLoss,
+          takeProfitPrice: target2, shares: sizing.shares,
+        });
+        // Notify about execution
+        if (token && chatId) {
+          const execMsg = `🤖 <b>AUTO-EXECUTE</b>: ${raw}\nShares: ${sizing.shares} @ $${entry.toFixed(2)}\nStop: $${stopLoss.toFixed(2)} | Target: $${target2.toFixed(2)}\nEntry: ${result.entry.status} | SL: ${result.stopLoss.status}`;
+          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: chatId, text: execMsg, parse_mode: "HTML" }),
+          }).catch(() => {});
+        }
+      } catch { /* non-critical — don't break alert flow */ }
+    }
   }
 }
 
@@ -175,7 +203,7 @@ export async function POST(req: NextRequest) {
   }
 
   const today = new Date().toISOString().split("T")[0];
-  const results: { symbol: string; status: string; consensus?: boolean; avgScore?: number; scoring?: ReturnType<typeof runMultiAgentScoring> }[] = [];
+  const results: { symbol: string; status: string; consensus?: boolean; avgScore?: number; scoring?: ReturnType<typeof runMultiAgentScoring>; tradePlan?: TradePlan | null }[] = [];
 
   for (const symbol of watchlist) {
     try {
@@ -215,7 +243,7 @@ export async function POST(req: NextRequest) {
 
       results.push({
         symbol, status: scoring.consensus ? "🟢 共識通過" : "⚪ 完成",
-        consensus: scoring.consensus, avgScore: scoring.avgScore, scoring,
+        consensus: scoring.consensus, avgScore: scoring.avgScore, scoring, tradePlan,
       });
     } catch (e) {
       results.push({ symbol, status: `❌ ${e instanceof Error ? e.message : String(e)}` });
