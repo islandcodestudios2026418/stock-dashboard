@@ -38,7 +38,7 @@ async function handleCommand(chatId: number, text: string) {
   switch (cmd) {
     case "/help":
     case "/start":
-      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score for symbol\n/pending — Unacted consensus picks\n/rs — Relative strength leaders\n/shift — Structural shift detector\n/run — Trigger manual analysis\n/brief — Morning briefing\n/help — This message`);
+      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score for symbol\n/pending — Unacted consensus picks\n/accept NVDA [reason] — Accept a pick\n/reject NVDA [reason] — Reject a pick\n/rs — Relative strength leaders\n/shift — Structural shift detector\n/run — Trigger manual analysis\n/brief — Morning briefing\n/help — This message`);
       break;
 
     case "/status": {
@@ -124,6 +124,28 @@ async function handleCommand(chatId: number, text: string) {
           await reply(chatId, "📊 No structural shift signals detected");
         }
       } catch { await reply(chatId, "❌ Shift scan failed"); }
+      break;
+    }
+
+    case "/accept": {
+      if (!arg) { await reply(chatId, "Usage: /accept NVDA [reason]"); break; }
+      if (!supabase) { await reply(chatId, "⚠️ Supabase not configured"); break; }
+      const reason = parts.slice(2).join(" ") || "Accepted via Telegram";
+      const { error } = await supabase.from("trade_decisions").insert({
+        symbol: arg, decision: "accepted", reason, date: new Date().toISOString().split("T")[0],
+      });
+      await reply(chatId, error ? `❌ ${error.message}` : `✅ <b>${arg}</b> accepted: ${reason}`);
+      break;
+    }
+
+    case "/reject": {
+      if (!arg) { await reply(chatId, "Usage: /reject NVDA [reason]"); break; }
+      if (!supabase) { await reply(chatId, "⚠️ Supabase not configured"); break; }
+      const reason = parts.slice(2).join(" ") || "Rejected via Telegram";
+      const { error } = await supabase.from("trade_decisions").insert({
+        symbol: arg, decision: "rejected", reason, date: new Date().toISOString().split("T")[0],
+      });
+      await reply(chatId, error ? `❌ ${error.message}` : `🚫 <b>${arg}</b> rejected: ${reason}`);
       break;
     }
 
