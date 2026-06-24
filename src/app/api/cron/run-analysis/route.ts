@@ -208,6 +208,17 @@ export async function POST(req: NextRequest) {
   const today = new Date().toISOString().split("T")[0];
   const results: { symbol: string; status: string; consensus?: boolean; avgScore?: number; scoring?: ReturnType<typeof runMultiAgentScoring>; tradePlan?: TradePlan | null; conviction?: ConvictionResult }[] = [];
 
+  // Fetch SPY benchmark for relative strength calculation
+  let spyReturn60d = 0;
+  try {
+    const spyData = await fetchChart("SPY");
+    if (spyData.length >= 60) {
+      const sp60 = spyData[spyData.length - 60].close;
+      const spLast = spyData[spyData.length - 1].close;
+      spyReturn60d = ((spLast - sp60) / sp60) * 100;
+    }
+  } catch { /* non-critical */ }
+
   for (const symbol of watchlist) {
     try {
       const raw = symbol.includes(":") ? symbol.split(":")[1] : symbol;
@@ -232,6 +243,13 @@ export async function POST(req: NextRequest) {
 
       const scoring = runMultiAgentScoring(symbol, periods, newsAgent);
 
+      // Relative strength vs SPY (inline)
+      let rsVsSpy: number | null = null;
+      if (periods.length >= 60) {
+        const stockReturn = ((periods[periods.length - 1].close - periods[periods.length - 60].close) / periods[periods.length - 60].close) * 100;
+        rsVsSpy = Math.round((stockReturn - spyReturn60d) * 100) / 100;
+      }
+
       // Conviction overlay: tracks score trend over recent days
       const conviction = await computeConviction(symbol, scoring.avgScore, scoring.consensus);
       const sectorCtx = getSectorForStock(symbol);
@@ -243,7 +261,7 @@ export async function POST(req: NextRequest) {
       if (supabase && !dryRun) {
         await supabase.from("analysis_results").upsert({
           symbol, date: today, analysis,
-          scoring: { consensus: scoring.consensus, avgScore: scoring.avgScore, agents: scoring.agents, recommendation: scoring.recommendation, conviction, sector: sectorCtx },
+          scoring: { consensus: scoring.consensus, avgScore: scoring.avgScore, agents: scoring.agents, recommendation: scoring.recommendation, conviction, sector: sectorCtx, rsVsSpy },
           indicators, trade_plan: tradePlan, ts: Date.now(),
         }, { onConflict: "symbol,date" });
       }
