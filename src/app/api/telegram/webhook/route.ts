@@ -38,7 +38,7 @@ async function handleCommand(chatId: number, text: string) {
   switch (cmd) {
     case "/help":
     case "/start":
-      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score for symbol\n/pending — Unacted consensus picks\n/accept NVDA [reason] — Accept a pick\n/reject NVDA [reason] — Reject a pick\n/rs — Relative strength leaders\n/shift — Structural shift detector\n/run — Trigger manual analysis\n/brief — Morning briefing\n/help — This message`);
+      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score\n/pending — Unacted picks\n/accept NVDA — Accept pick\n/reject NVDA — Reject pick\n/add NVDA — Add to watchlist\n/remove NVDA — Remove from watchlist\n/rs — RS leaders\n/shift — Structural shift\n/run — Trigger scan\n/brief — Morning brief\n/help — This message`);
       break;
 
     case "/status": {
@@ -146,6 +146,24 @@ async function handleCommand(chatId: number, text: string) {
         symbol: arg, decision: "rejected", reason, date: new Date().toISOString().split("T")[0],
       });
       await reply(chatId, error ? `❌ ${error.message}` : `🚫 <b>${arg}</b> rejected: ${reason}`);
+      break;
+    }
+
+    case "/add": {
+      if (!arg) { await reply(chatId, "Usage: /add NVDA"); break; }
+      if (!supabase) { await reply(chatId, "⚠️ Supabase not configured"); break; }
+      const sym = arg.includes(":") ? arg : `NASDAQ:${arg}`;
+      const { error } = await supabase.from("watchlists").upsert({ symbol: sym, active: true }, { onConflict: "symbol" });
+      await reply(chatId, error ? `❌ ${error.message}` : `✅ Added <b>${sym}</b> to watchlist`);
+      break;
+    }
+
+    case "/remove": {
+      if (!arg) { await reply(chatId, "Usage: /remove NVDA"); break; }
+      if (!supabase) { await reply(chatId, "⚠️ Supabase not configured"); break; }
+      const sym2 = arg.includes(":") ? arg : `NASDAQ:${arg}`;
+      const { error } = await supabase.from("watchlists").update({ active: false }).eq("symbol", sym2);
+      await reply(chatId, error ? `❌ ${error.message}` : `🗑️ Removed <b>${sym2}</b> from watchlist`);
       break;
     }
 
