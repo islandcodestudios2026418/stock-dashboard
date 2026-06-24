@@ -3,6 +3,8 @@ import { getIndicatorSummary, calcRiskScore, type OHLCV } from "@/lib/indicators
 import { calcSupportResistance, calcTradePlan, type TradePlan } from "@/lib/levels";
 import { runMultiAgentScoring, type AgentScore } from "@/lib/multi-agent-scoring";
 import { scoreNewsSentiment } from "@/lib/news-sentiment";
+import { computeConviction, type ConvictionResult } from "@/lib/conviction";
+import { getSectorForStock } from "@/lib/sector-classification";
 import { trySupabase } from "@/lib/supabase";
 import { placeBracketOrder, calculatePositionSize } from "@/lib/ibkr-client";
 
@@ -157,7 +159,7 @@ async function escalateAlert(picks: { symbol: string; avgScore?: number; scoring
 }
 
 // Generate plaintext pre-market summary (for email/Telegram/clipboard)
-function buildTextSummary(results: { symbol: string; status: string; consensus?: boolean; avgScore?: number; scoring?: ReturnType<typeof runMultiAgentScoring> }[], date: string): string {
+function buildTextSummary(results: { symbol: string; status: string; consensus?: boolean; avgScore?: number; scoring?: ReturnType<typeof runMultiAgentScoring>; conviction?: ConvictionResult }[], date: string): string {
   const lines: string[] = [];
   const consensusPicks = results.filter(r => r.consensus);
   lines.push(`📊 Pre-Market Scan — ${date}`);
@@ -174,7 +176,8 @@ function buildTextSummary(results: { symbol: string; status: string; consensus?:
     if (!r.scoring) { lines.push(`${r.symbol}: ${r.status}`); continue; }
     const s = r.scoring;
     const bar = s.agents.map(a => `${a.agent.split("(")[1]?.replace(")", "") || a.agent}${a.score}`).join(" | ");
-    lines.push(`${r.consensus ? "🟢" : "⚪"} ${r.symbol} — avg ${r.avgScore?.toFixed(0)}/100`);
+    const cvTag = r.conviction && r.conviction.streak >= 3 ? ` 🔥${r.conviction.streak}d` : "";
+    lines.push(`${r.consensus ? "🟢" : "⚪"} ${r.symbol} — avg ${r.avgScore?.toFixed(0)}/100${cvTag}`);
     lines.push(`   ${bar}`);
     lines.push(`   ${s.recommendation}`);
   }
@@ -203,7 +206,7 @@ export async function POST(req: NextRequest) {
   }
 
   const today = new Date().toISOString().split("T")[0];
-  const results: { symbol: string; status: string; consensus?: boolean; avgScore?: number; scoring?: ReturnType<typeof runMultiAgentScoring>; tradePlan?: TradePlan | null }[] = [];
+  const results: { symbol: string; status: string; consensus?: boolean; avgScore?: number; scoring?: ReturnType<typeof runMultiAgentScoring>; tradePlan?: TradePlan | null; conviction?: ConvictionResult }[] = [];
 
   for (const symbol of watchlist) {
     try {
@@ -229,6 +232,10 @@ export async function POST(req: NextRequest) {
 
       const scoring = runMultiAgentScoring(symbol, periods, newsAgent);
 
+      // Conviction overlay: tracks score trend over recent days
+      const conviction = await computeConviction(symbol, scoring.avgScore, scoring.consensus);
+      const sectorCtx = getSectorForStock(symbol);
+
       const last = periods[periods.length - 1];
       const analysis = buildAnalysis(symbol, last, indicators, riskScore, levels, tradePlan, scoring);
 
@@ -236,7 +243,7 @@ export async function POST(req: NextRequest) {
       if (supabase && !dryRun) {
         await supabase.from("analysis_results").upsert({
           symbol, date: today, analysis,
-          scoring: { consensus: scoring.consensus, avgScore: scoring.avgScore, agents: scoring.agents, recommendation: scoring.recommendation },
+          scoring: { consensus: scoring.consensus, avgScore: scoring.avgScore, agents: scoring.agents, recommendation: scoring.recommendation, conviction, sector: sectorCtx },
           indicators, trade_plan: tradePlan, ts: Date.now(),
         }, { onConflict: "symbol,date" });
       }
@@ -244,6 +251,7 @@ export async function POST(req: NextRequest) {
       results.push({
         symbol, status: scoring.consensus ? "🟢 共識通過" : "⚪ 完成",
         consensus: scoring.consensus, avgScore: scoring.avgScore, scoring, tradePlan,
+        conviction,
       });
     } catch (e) {
       results.push({ symbol, status: `❌ ${e instanceof Error ? e.message : String(e)}` });

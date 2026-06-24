@@ -105,3 +105,41 @@ create policy "service_all_portfolio" on portfolio_positions for all to service_
 -- 6. Migration: add peak_price and closed_at for position monitor (2026-06-24)
 alter table portfolio_positions add column if not exists peak_price numeric;
 alter table portfolio_positions add column if not exists closed_at timestamptz;
+
+
+
+-- 7. Alert rules: per-symbol custom notification thresholds (2026-06-24)
+create table if not exists alert_rules (
+  id bigint generated always as identity primary key,
+  symbol text not null unique,
+  min_score integer not null default 65,
+  notify_on_rise boolean not null default true,
+  cooldown_hours integer not null default 24,
+  active boolean not null default true,
+  updated_at timestamptz default now()
+);
+
+alter table alert_rules enable row level security;
+create policy "anon_read_alerts" on alert_rules for select to anon using (true);
+create policy "service_all_alerts" on alert_rules for all to service_role using (true);
+
+
+-- 8. Trade decisions: Phase 1 semi-auto journal (2026-06-24)
+create table if not exists trade_decisions (
+  id bigint generated always as identity primary key,
+  symbol text not null,
+  date text not null,
+  decision text not null, -- accepted/rejected/deferred
+  reason text,
+  avg_score numeric,
+  conviction_score numeric,
+  trade_plan jsonb,
+  created_at timestamptz default now()
+);
+
+create index idx_trade_decisions_symbol on trade_decisions(symbol, date desc);
+create index idx_trade_decisions_date on trade_decisions(date desc);
+
+alter table trade_decisions enable row level security;
+create policy "anon_read_decisions" on trade_decisions for select to anon using (true);
+create policy "service_all_decisions" on trade_decisions for all to service_role using (true);

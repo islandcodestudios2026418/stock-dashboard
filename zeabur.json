@@ -39,6 +39,16 @@
       "schedule": "*/5 13-19 * * 1-5",
       "path": "/api/cron/monitor?secret=${CRON_SECRET}",
       "comment": "Position monitor: every 5min during US market hours (13:30-20:00 UTC)"
+    },
+    {
+      "schedule": "0 20 * * 0",
+      "path": "/api/cron/weekly-report?secret=${CRON_SECRET}",
+      "comment": "Weekly report: Sunday 04:00 Taiwan (20:00 UTC Saturday)"
+    },
+    {
+      "schedule": "30 20 * * 0",
+      "path": "/api/cron/watchlist-rotation?secret=${CRON_SECRET}",
+      "comment": "Watchlist rotation: Sunday 04:30 Taiwan (20:30 UTC Saturday)"
     }
   ],
   "health_check": {
