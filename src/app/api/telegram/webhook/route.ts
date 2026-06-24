@@ -191,6 +191,18 @@ async function handleCommand(chatId: number, text: string) {
       break;
     }
 
+    case "/corr": {
+      try {
+        const res = await fetch(`${baseUrl}/api/cron/correlation?secret=${CRON_SECRET}`);
+        const data = await res.json();
+        const top = (data.highCorrelation || []).slice(0, 5).map((p: { a: string; b: string; correlation: number }) => `⚠️ ${p.a} ↔ ${p.b}: ${p.correlation.toFixed(2)}`);
+        await reply(chatId, top.length > 0
+          ? `📊 <b>Correlation Risks</b>\n\n${top.join("\n")}\n\n${data.warning}`
+          : `✅ ${data.warning}`);
+      } catch { await reply(chatId, "❌ Correlation check failed"); }
+      break;
+    }
+
     default:
       if (text.startsWith("/")) {
         await reply(chatId, `❓ Unknown command. Try /help`);
