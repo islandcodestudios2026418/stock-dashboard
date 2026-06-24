@@ -158,6 +158,16 @@ async function handleCommand(chatId: number, text: string) {
       break;
     }
 
+    case "/watchlist":
+    case "/wl": {
+      if (!supabase) { await reply(chatId, "⚠️ Supabase not configured"); break; }
+      const { data: wl } = await supabase.from("watchlists").select("symbol").eq("active", true);
+      if (!wl || wl.length === 0) { await reply(chatId, "📋 Watchlist is empty"); break; }
+      const syms = (wl as { symbol: string }[]).map(r => r.symbol.includes(":") ? r.symbol.split(":")[1] : r.symbol);
+      await reply(chatId, `📋 <b>Watchlist (${syms.length})</b>\n\n${syms.join(", ")}`);
+      break;
+    }
+
     case "/remove": {
       if (!arg) { await reply(chatId, "Usage: /remove NVDA"); break; }
       if (!supabase) { await reply(chatId, "⚠️ Supabase not configured"); break; }
