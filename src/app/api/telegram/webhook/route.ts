@@ -167,6 +167,20 @@ async function handleCommand(chatId: number, text: string) {
       break;
     }
 
+    case "/scan": {
+      await reply(chatId, "🔍 Scanning universe for SNDK patterns...");
+      try {
+        const res = await fetch(`${baseUrl}/api/cron/sndk-scanner?secret=${CRON_SECRET}`);
+        const data = await res.json();
+        if (data.newCandidates?.length > 0) {
+          await reply(chatId, `🆕 Found: ${data.newCandidates.join(", ")}\nAuto-added to watchlist.`);
+        } else {
+          await reply(chatId, `📊 Scanned ${data.scanned} stocks. ${data.signals} partial signals, no full match.`);
+        }
+      } catch { await reply(chatId, "❌ Scan failed"); }
+      break;
+    }
+
     default:
       if (text.startsWith("/")) {
         await reply(chatId, `❓ Unknown command. Try /help`);
