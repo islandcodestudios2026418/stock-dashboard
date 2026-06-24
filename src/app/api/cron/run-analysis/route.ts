@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from "next/server";
 import { getIndicatorSummary, calcRiskScore, type OHLCV } from "@/lib/indicators";
 import { calcSupportResistance, calcTradePlan } from "@/lib/levels";
-import { runMultiAgentScoring } from "@/lib/multi-agent-scoring";
+import { runMultiAgentScoring, type AgentScore } from "@/lib/multi-agent-scoring";
+import { scoreNewsSentiment } from "@/lib/news-sentiment";
 import { trySupabase } from "@/lib/supabase";
 
 // POST /api/cron/run-analysis
@@ -80,6 +81,53 @@ async function notifyTelegram(text: string) {
   } catch { /* non-critical */ }
 }
 
+// URGENT alert escalation: fires when consensus pick found
+async function escalateAlert(picks: { symbol: string; avgScore?: number; scoring?: ReturnType<typeof runMultiAgentScoring> }[]) {
+  if (picks.length === 0) return;
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  const chatId = process.env.TELEGRAM_CHAT_ID;
+  const webhookUrl = process.env.DISCORD_WEBHOOK_URL;
+
+  const symbols = picks.map(p => p.symbol).join(", ");
+  const details = picks.map(p => {
+    const agents = p.scoring?.agents.map(a => `${a.agent.split("(")[0]}=${a.score}`).join(", ") || "";
+    return `🎯 <b>${p.symbol}</b> — avg ${p.avgScore?.toFixed(0)}/100\n   ${agents}`;
+  }).join("\n");
+
+  const urgentMsg = `🚨🚨🚨 <b>CONSENSUS PICK FOUND</b> 🚨🚨🚨\n\n${details}\n\n⚡ All 5 agents agree. Review immediately.\n📊 Dashboard: ${process.env.ZEABUR_URL || "check dashboard"}`;
+
+  // Telegram: send with notification (no disable_notification)
+  if (token && chatId) {
+    try {
+      await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ chat_id: chatId, text: urgentMsg, parse_mode: "HTML" }),
+      });
+    } catch { /* non-critical */ }
+  }
+
+  // Discord: @everyone mention for urgency
+  if (webhookUrl) {
+    try {
+      await fetch(webhookUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          content: `@everyone 🚨 **CONSENSUS PICK: ${symbols}** — All 5 agents agree!`,
+          embeds: [{
+            title: "🚨 URGENT: Consensus Pick Found",
+            color: 0xff0000,
+            description: picks.map(p => `**${p.symbol}** — avg ${p.avgScore?.toFixed(0)}/100`).join("\n"),
+            footer: { text: "Action required — review trade plan immediately" },
+            timestamp: new Date().toISOString(),
+          }],
+        }),
+      });
+    } catch { /* non-critical */ }
+  }
+}
+
 // Generate plaintext pre-market summary (for email/Telegram/clipboard)
 function buildTextSummary(results: { symbol: string; status: string; consensus?: boolean; avgScore?: number; scoring?: ReturnType<typeof runMultiAgentScoring> }[], date: string): string {
   const lines: string[] = [];
@@ -141,7 +189,17 @@ export async function POST(req: NextRequest) {
       const riskScore = calcRiskScore(periods);
       const levels = calcSupportResistance(periods);
       const tradePlan = calcTradePlan(periods, levels);
-      const scoring = runMultiAgentScoring(symbol, periods);
+
+      // Fetch real news sentiment (optional — skipped if no FINNHUB_API_KEY)
+      let newsAgent: AgentScore | undefined;
+      try {
+        const ns = await scoreNewsSentiment(symbol);
+        if (ns.newsCount > 0) {
+          newsAgent = { agent: "News(新聞)", score: ns.score, signal: ns.signal, reasoning: ns.reasoning };
+        }
+      } catch { /* non-critical */ }
+
+      const scoring = runMultiAgentScoring(symbol, periods, newsAgent);
 
       const last = periods[periods.length - 1];
       const analysis = buildAnalysis(symbol, last, indicators, riskScore, levels, tradePlan, scoring);
@@ -172,6 +230,10 @@ export async function POST(req: NextRequest) {
 
   const textSummary = buildTextSummary(results, today);
   if (!dryRun) await notifyTelegram(textSummary);
+
+  // URGENT escalation for consensus picks
+  const consensusPicks = results.filter(r => r.consensus);
+  if (!dryRun && consensusPicks.length > 0) await escalateAlert(consensusPicks);
 
   return NextResponse.json({ date: today, dryRun, supabaseConnected: !!supabase, results: results.map(({ scoring: _s, ...r }) => r), textSummary });
 }

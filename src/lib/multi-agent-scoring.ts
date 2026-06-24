@@ -278,23 +278,32 @@ export function scoreRisk(data: OHLCV[]): AgentScore {
 }
 
 // Orchestrator: run all 5 agents, determine consensus
-export function runMultiAgentScoring(symbol: string, data: OHLCV[]): ConsensusResult {
+// newsScore is optional 6th agent from Finnhub — included in display but doesn't block consensus
+export function runMultiAgentScoring(symbol: string, data: OHLCV[], newsAgent?: AgentScore): ConsensusResult {
   if (data.length < 60) {
     return { symbol, consensus: false, avgScore: 0, agents: [], recommendation: "資料不足(需至少60根K線)" };
   }
 
-  const agents = [scoreMacro(data), scoreTechnical(data), scoreSentiment(data), scoreFundamentals(data), scoreRisk(data)];
+  const coreAgents = [scoreMacro(data), scoreTechnical(data), scoreSentiment(data), scoreFundamentals(data), scoreRisk(data)];
+  const agents = newsAgent ? [...coreAgents, newsAgent] : coreAgents;
+
+  // Consensus based on core 5 only (news is supplementary)
+  const coreConsensus = coreAgents.every(a => a.score >= CONSENSUS_THRESHOLD);
   const avgScore = agents.reduce((s, a) => s + a.score, 0) / agents.length;
-  const consensus = agents.every(a => a.score >= CONSENSUS_THRESHOLD);
-  const allBuy = agents.every(a => a.signal === "BUY" || a.signal === "STRONG_BUY");
+  // News can VETO if strongly negative (< 30)
+  const newsVeto = newsAgent && newsAgent.score < 30;
+  const consensus = coreConsensus && !newsVeto;
+  const allBuy = coreAgents.every(a => a.signal === "BUY" || a.signal === "STRONG_BUY");
 
   let recommendation: string;
-  if (consensus && allBuy) {
+  if (newsVeto) {
+    recommendation = "🔴 新聞面強烈負面 — 暫緩進場";
+  } else if (consensus && allBuy) {
     recommendation = "🟢 全員共識買入 — 符合SNDK爆發模型";
   } else if (consensus) {
     recommendation = "🟡 全員通過但信號分歧 — 持續觀察";
   } else {
-    const bearish = agents.filter(a => a.score < CONSENSUS_THRESHOLD);
+    const bearish = coreAgents.filter(a => a.score < CONSENSUS_THRESHOLD);
     recommendation = `⚪ 未達共識 — ${bearish.map(a => a.agent).join(",")}未通過`;
   }
 

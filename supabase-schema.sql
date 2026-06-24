@@ -74,3 +74,28 @@ create index idx_backtest_symbol on backtest_results(symbol, run_date desc);
 alter table backtest_results enable row level security;
 create policy "anon_read_backtest" on backtest_results for select to anon using (true);
 create policy "service_all_backtest" on backtest_results for all to service_role using (true);
+
+
+
+-- 5. Portfolio positions (track entries, exits, P&L)
+create table if not exists portfolio_positions (
+  id bigint generated always as identity primary key,
+  symbol text not null,
+  side text not null default 'long', -- long/short
+  entry_date text not null,
+  entry_price numeric not null,
+  shares numeric not null,
+  stop_loss numeric,
+  target numeric,
+  exit_date text,
+  exit_price numeric,
+  status text not null default 'open', -- open/closed/stopped
+  notes text,
+  created_at timestamptz default now()
+);
+
+create index idx_portfolio_status on portfolio_positions(status, symbol);
+
+alter table portfolio_positions enable row level security;
+create policy "anon_read_portfolio" on portfolio_positions for select to anon using (true);
+create policy "service_all_portfolio" on portfolio_positions for all to service_role using (true);
