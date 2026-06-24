@@ -30,6 +30,10 @@ async function runAnalysis(req: NextRequest): Promise<NextResponse> {
       },
     });
     const data = await res.json();
+
+    // Fire morning brief after analysis completes (non-blocking)
+    fetch(`${baseUrl}/api/cron/morning-brief?secret=${CRON_SECRET}`).catch(() => {});
+
     return NextResponse.json({ triggered: true, ...data }, { status: res.status });
   } catch (err) {
     return NextResponse.json(
