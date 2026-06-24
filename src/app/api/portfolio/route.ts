@@ -62,6 +62,7 @@ export async function POST(req: NextRequest) {
   const entry_date = new Date().toISOString().split("T")[0];
   const { data, error } = await supabase.from("portfolio_positions").insert({
     symbol, entry_date, entry_price, shares, stop_loss, target, notes, status: "open",
+    peak_price: entry_price,
   }).select().single();
 
   if (error) return NextResponse.json({ error: error.message }, { status: 500 });
