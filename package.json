@@ -10,6 +10,7 @@
     "backtest": "tsx scripts/run-backtest.ts",
     "backtest:batch": "tsx scripts/batch-backtest.ts",
     "check": "tsx scripts/setup-check.ts",
+    "test:local": "tsx scripts/local-test.ts",
     "setup": "tsx scripts/setup-supabase.ts",
     "mcp": "tsx src/mcp/server.ts",
     "electron": "electron electron/main.js"
