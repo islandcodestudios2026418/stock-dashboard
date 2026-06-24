@@ -38,7 +38,7 @@ async function handleCommand(chatId: number, text: string) {
   switch (cmd) {
     case "/help":
     case "/start":
-      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score for symbol\n/pending — Unacted consensus picks\n/rs — Relative strength leaders\n/run — Trigger manual analysis\n/brief — Morning briefing\n/help — This message`);
+      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score for symbol\n/pending — Unacted consensus picks\n/rs — Relative strength leaders\n/shift — Structural shift detector\n/run — Trigger manual analysis\n/brief — Morning briefing\n/help — This message`);
       break;
 
     case "/status": {
@@ -110,6 +110,20 @@ async function handleCommand(chatId: number, text: string) {
         await fetch(`${baseUrl}/api/cron/morning-brief?secret=${CRON_SECRET}`);
         // The brief endpoint itself sends the Telegram message
       } catch { await reply(chatId, "❌ Brief failed"); }
+      break;
+    }
+
+    case "/shift": {
+      try {
+        const res = await fetch(`${baseUrl}/api/cron/structural-shift?secret=${CRON_SECRET}`);
+        const data = await res.json();
+        if (data.signals?.length > 0) {
+          const top = data.signals.slice(0, 5).map((s: { symbol: string; shiftScore: number; reasoning: string }) => `${s.shiftScore >= 70 ? "🔥" : "📊"} ${s.symbol}: ${s.shiftScore}/100\n  ${s.reasoning}`);
+          await reply(chatId, `🏭 <b>Structural Shift Scan</b>\n\n${top.join("\n\n")}`);
+        } else {
+          await reply(chatId, "📊 No structural shift signals detected");
+        }
+      } catch { await reply(chatId, "❌ Shift scan failed"); }
       break;
     }
 
