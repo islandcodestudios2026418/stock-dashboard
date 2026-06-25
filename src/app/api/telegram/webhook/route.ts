@@ -38,7 +38,7 @@ async function handleCommand(chatId: number, text: string) {
   switch (cmd) {
     case "/help":
     case "/start":
-      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score\n/top — Signal composite ranking\n/breadth — Market breadth\n/pending — Unacted picks\n/accept NVDA — Accept pick\n/reject NVDA — Reject pick\n/add NVDA — Add to watchlist\n/remove NVDA — Remove\n/rs — RS leaders\n/shift — Structural shift\n/perf — Agent attribution\n/mtf [SYM] — Multi-timeframe\n/rebal — Rebalance\n/gaps — Gap scanner\n/vol — Vol regime\n/health — Position risk\n/corr — Correlations\n/run — Trigger scan\n/brief — Morning brief\n/help — This message`);
+      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score\n/top — Signal composite ranking\n/breadth — Market breadth\n/entry [SYM] — Entry timing patterns\n/exit — Exit signals for positions\n/pending — Unacted picks\n/accept NVDA — Accept pick\n/reject NVDA — Reject pick\n/add NVDA — Add to watchlist\n/remove NVDA — Remove\n/rs — RS leaders\n/shift — Structural shift\n/perf — Agent attribution\n/mtf [SYM] — Multi-timeframe\n/rebal — Rebalance\n/gaps — Gap scanner\n/vol — Vol regime\n/health — Position risk\n/corr — Correlations\n/run — Trigger scan\n/brief — Morning brief\n/help — This message`);
       break;
 
     case "/status": {
@@ -314,6 +314,37 @@ async function handleCommand(chatId: number, text: string) {
         const idx = (data.indices || []).map((i: { name: string; pctChange: number }) => `${i.pctChange > 0 ? "🟢" : "🔴"} ${i.name}: ${i.pctChange > 0 ? "+" : ""}${i.pctChange}%`);
         await reply(chatId, `📊 <b>Market Breadth: ${data.regime}</b>\n\n${idx.join("\n")}\n\nSectors >200MA: ${data.breadth?.sectorsAbove200MA}\nAdvancing: ${data.breadth?.advancingToday}\n\n${data.signal}`);
       } catch { await reply(chatId, "❌ Breadth check failed"); }
+      break;
+    }
+
+    case "/entry": {
+      const sym = arg || "";
+      try {
+        const url = sym ? `${baseUrl}/api/cron/entry-timing?secret=${CRON_SECRET}&symbol=${sym}` : `${baseUrl}/api/cron/entry-timing?secret=${CRON_SECRET}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!data.signals || data.signals.length === 0) { await reply(chatId, "⚪ No entry patterns detected"); break; }
+        const lines = data.signals.slice(0, 6).map((s: { symbol: string; pattern: string; confidence: number; detail: string; entryZone?: { low: number; high: number } }) =>
+          `${s.confidence >= 75 ? "🟢" : "🟡"} ${s.symbol} — ${s.pattern} (${s.confidence}%)\n  ${s.detail}${s.entryZone ? `\n  📍 Zone: $${s.entryZone.low.toFixed(2)}-$${s.entryZone.high.toFixed(2)}` : ""}`
+        );
+        await reply(chatId, `⏱️ <b>Entry Timing</b>\n\n${lines.join("\n\n")}`);
+      } catch { await reply(chatId, "❌ Entry timing failed"); }
+      break;
+    }
+
+    case "/exit": {
+      try {
+        const res = await fetch(`${baseUrl}/api/cron/exit-signals?secret=${CRON_SECRET}`);
+        const data = await res.json();
+        if (!data.signals || data.signals.length === 0) {
+          await reply(chatId, data.message || "✅ No exit signals — positions safe");
+          break;
+        }
+        const lines = data.signals.map((s: { symbol: string; signal: string; urgency: number; detail: string }) =>
+          `${s.urgency >= 80 ? "🔴" : "🟡"} ${s.symbol} — ${s.signal} (${s.urgency}%)\n  ${s.detail}`
+        );
+        await reply(chatId, `🚨 <b>Exit Signals</b>\n\n${lines.join("\n\n")}\n\n${data.summary}`);
+      } catch { await reply(chatId, "❌ Exit signals failed"); }
       break;
     }
 
