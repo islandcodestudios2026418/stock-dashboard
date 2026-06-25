@@ -38,7 +38,7 @@ async function handleCommand(chatId: number, text: string) {
   switch (cmd) {
     case "/help":
     case "/start":
-      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score\n/pending — Unacted picks\n/accept NVDA — Accept pick\n/reject NVDA — Reject pick\n/add NVDA — Add to watchlist\n/remove NVDA — Remove from watchlist\n/rs — RS leaders\n/shift — Structural shift\n/perf — Agent accuracy attribution\n/mtf [SYM] — Multi-timeframe trend\n/rebal — Rebalance suggestions\n/gaps — Pre-market gap scanner\n/vol — Volatility regime\n/health — Position risk check\n/corr — Correlation risks\n/run — Trigger scan\n/brief — Morning brief\n/help — This message`);
+      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score\n/top — Signal composite ranking\n/breadth — Market breadth\n/pending — Unacted picks\n/accept NVDA — Accept pick\n/reject NVDA — Reject pick\n/add NVDA — Add to watchlist\n/remove NVDA — Remove\n/rs — RS leaders\n/shift — Structural shift\n/perf — Agent attribution\n/mtf [SYM] — Multi-timeframe\n/rebal — Rebalance\n/gaps — Gap scanner\n/vol — Vol regime\n/health — Position risk\n/corr — Correlations\n/run — Trigger scan\n/brief — Morning brief\n/help — This message`);
       break;
 
     case "/status": {
@@ -290,6 +290,30 @@ async function handleCommand(chatId: number, text: string) {
         );
         await reply(chatId, `🏥 <b>Position Health</b>\n\nP&L: $${data.totalPnl}\n\n${lines.join("\n")}\n\n${data.summary}`);
       } catch { await reply(chatId, "❌ Health check failed"); }
+      break;
+    }
+
+    case "/top":
+    case "/rank": {
+      try {
+        const res = await fetch(`${baseUrl}/api/cron/signal-composite?secret=${CRON_SECRET}`);
+        const data = await res.json();
+        if (!data.rankings || data.rankings.length === 0) { await reply(chatId, data.message || "❌ No data"); break; }
+        const top = data.rankings.slice(0, 8).map((r: { rank: number; symbol: string; compositeScore: number; flags: string[]; actionable: boolean }) =>
+          `${r.actionable ? "🟢" : "⚪"} #${r.rank} ${r.symbol}: ${r.compositeScore}/100${r.flags.length > 0 ? " " + r.flags[0] : ""}`
+        );
+        await reply(chatId, `🏆 <b>Signal Composite</b> (${data.volRegime} vol)\n\n${top.join("\n")}\n\n${data.summary}`);
+      } catch { await reply(chatId, "❌ Composite failed"); }
+      break;
+    }
+
+    case "/breadth": {
+      try {
+        const res = await fetch(`${baseUrl}/api/cron/market-breadth?secret=${CRON_SECRET}`);
+        const data = await res.json();
+        const idx = (data.indices || []).map((i: { name: string; pctChange: number }) => `${i.pctChange > 0 ? "🟢" : "🔴"} ${i.name}: ${i.pctChange > 0 ? "+" : ""}${i.pctChange}%`);
+        await reply(chatId, `📊 <b>Market Breadth: ${data.regime}</b>\n\n${idx.join("\n")}\n\nSectors >200MA: ${data.breadth?.sectorsAbove200MA}\nAdvancing: ${data.breadth?.advancingToday}\n\n${data.signal}`);
+      } catch { await reply(chatId, "❌ Breadth check failed"); }
       break;
     }
 

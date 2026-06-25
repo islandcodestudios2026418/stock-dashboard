@@ -208,6 +208,15 @@ export async function POST(req: NextRequest) {
   const today = new Date().toISOString().split("T")[0];
   const results: { symbol: string; status: string; consensus?: boolean; avgScore?: number; scoring?: ReturnType<typeof runMultiAgentScoring>; tradePlan?: TradePlan | null; conviction?: ConvictionResult }[] = [];
 
+  // Fetch vol regime to adjust consensus threshold dynamically
+  let volSizeMultiplier = 1.0;
+  try {
+    const baseUrl = process.env.ZEABUR_URL || `http://localhost:${process.env.PORT || 3000}`;
+    const volRes = await fetch(`${baseUrl}/api/cron/volatility-regime?secret=${CRON_SECRET}`);
+    const volData = await volRes.json();
+    volSizeMultiplier = volData.sizeMultiplier ?? 1.0;
+  } catch { /* non-critical — default 1.0x */ }
+
   // Fetch SPY benchmark for relative strength calculation
   let spyReturn60d = 0;
   try {
@@ -243,6 +252,16 @@ export async function POST(req: NextRequest) {
 
       const scoring = runMultiAgentScoring(symbol, periods, newsAgent);
 
+      // Vol regime adjustment: in high vol, require higher score for consensus
+      // sizeMultiplier: 1.0 (low/normal), 0.5 (high), 0.25 (extreme)
+      let adjustedConsensus = scoring.consensus;
+      if (volSizeMultiplier < 1.0 && scoring.consensus) {
+        // In high vol: require avg score >= 75 (instead of 65)
+        // In extreme vol: require avg score >= 85
+        const volThreshold = volSizeMultiplier <= 0.25 ? 85 : 75;
+        if (scoring.avgScore < volThreshold) adjustedConsensus = false;
+      }
+
       // Relative strength vs SPY (inline)
       let rsVsSpy: number | null = null;
       if (periods.length >= 60) {
@@ -261,14 +280,14 @@ export async function POST(req: NextRequest) {
       if (supabase && !dryRun) {
         await supabase.from("analysis_results").upsert({
           symbol, date: today, analysis,
-          scoring: { consensus: scoring.consensus, avgScore: scoring.avgScore, agents: scoring.agents, recommendation: scoring.recommendation, conviction, sector: sectorCtx, rsVsSpy },
+          scoring: { consensus: adjustedConsensus, avgScore: scoring.avgScore, agents: scoring.agents, recommendation: scoring.recommendation, conviction, sector: sectorCtx, rsVsSpy, volAdjusted: volSizeMultiplier < 1.0 },
           indicators, trade_plan: tradePlan, ts: Date.now(),
         }, { onConflict: "symbol,date" });
       }
 
       results.push({
-        symbol, status: scoring.consensus ? "🟢 共識通過" : "⚪ 完成",
-        consensus: scoring.consensus, avgScore: scoring.avgScore, scoring, tradePlan,
+        symbol, status: adjustedConsensus ? "🟢 共識通過" : "⚪ 完成",
+        consensus: adjustedConsensus, avgScore: scoring.avgScore, scoring, tradePlan,
         conviction,
       });
     } catch (e) {
