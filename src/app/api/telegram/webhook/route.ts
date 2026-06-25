@@ -38,7 +38,7 @@ async function handleCommand(chatId: number, text: string) {
   switch (cmd) {
     case "/help":
     case "/start":
-      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score\n/pending — Unacted picks\n/accept NVDA — Accept pick\n/reject NVDA — Reject pick\n/add NVDA — Add to watchlist\n/remove NVDA — Remove from watchlist\n/rs — RS leaders\n/shift — Structural shift\n/perf — Agent accuracy attribution\n/mtf [SYM] — Multi-timeframe trend\n/rebal — Rebalance suggestions\n/corr — Correlation risks\n/run — Trigger scan\n/brief — Morning brief\n/help — This message`);
+      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score\n/pending — Unacted picks\n/accept NVDA — Accept pick\n/reject NVDA — Reject pick\n/add NVDA — Add to watchlist\n/remove NVDA — Remove from watchlist\n/rs — RS leaders\n/shift — Structural shift\n/perf — Agent accuracy attribution\n/mtf [SYM] — Multi-timeframe trend\n/rebal — Rebalance suggestions\n/gaps — Pre-market gap scanner\n/vol — Volatility regime\n/health — Position risk check\n/corr — Correlation risks\n/run — Trigger scan\n/brief — Morning brief\n/help — This message`);
       break;
 
     case "/status": {
@@ -248,6 +248,48 @@ async function handleCommand(chatId: number, text: string) {
         const extra = data.correlationWarnings?.length > 0 ? `\n\n${data.correlationWarnings[0]}` : "";
         await reply(chatId, `⚖️ <b>Rebalance</b>\n\n${lines.join("\n")}\n\n${data.summary}${extra}`);
       } catch { await reply(chatId, "❌ Rebalance check failed"); }
+      break;
+    }
+
+    case "/gaps": {
+      try {
+        const res = await fetch(`${baseUrl}/api/cron/gap-scanner?secret=${CRON_SECRET}`);
+        const data = await res.json();
+        if (!data.gaps || data.gaps.length === 0) {
+          await reply(chatId, `✅ No gaps >${data.threshold || 3}% on watchlist`);
+          break;
+        }
+        const lines = data.gaps.map((g: { symbol: string; gapPct: number; current: number; isPreMarket: boolean }) =>
+          `${g.gapPct > 0 ? "🟢" : "🔴"} ${g.symbol}: ${g.gapPct > 0 ? "+" : ""}${g.gapPct}% → $${g.current}${g.isPreMarket ? " (pre)" : ""}`
+        );
+        await reply(chatId, `📊 <b>Gap Scanner</b>\n\n${lines.join("\n")}`);
+      } catch { await reply(chatId, "❌ Gap scan failed"); }
+      break;
+    }
+
+    case "/vol": {
+      try {
+        const res = await fetch(`${baseUrl}/api/cron/volatility-regime?secret=${CRON_SECRET}`);
+        const data = await res.json();
+        const emoji = data.regime === "LOW" ? "🟢" : data.regime === "NORMAL" ? "🟡" : data.regime === "HIGH" ? "🟠" : "🔴";
+        await reply(chatId, `${emoji} <b>Vol Regime: ${data.regime}</b>\n\nVIX: ${data.vix} (${data.vixChange})\nRealized: 5d=${data.realizedVol?.["5d"]}% 20d=${data.realizedVol?.["20d"]}%\nSize: ${data.sizeMultiplier}x\n\n${data.advice}\n${data.signal}`);
+      } catch { await reply(chatId, "❌ Vol check failed"); }
+      break;
+    }
+
+    case "/health": {
+      try {
+        const res = await fetch(`${baseUrl}/api/cron/position-health?secret=${CRON_SECRET}`);
+        const data = await res.json();
+        if (!data.health || data.health.length === 0) {
+          await reply(chatId, data.message || "📋 No open positions");
+          break;
+        }
+        const lines = data.health.map((h: { symbol: string; pnlPct: number; daysHeld: number; distToStop: number; flags: string[] }) =>
+          `${h.flags.length > 0 ? "⚠️" : "✅"} ${h.symbol}: ${h.pnlPct > 0 ? "+" : ""}${h.pnlPct}% (${h.daysHeld}d, ${h.distToStop}% to stop)${h.flags.length > 0 ? "\n  " + h.flags.join(" ") : ""}`
+        );
+        await reply(chatId, `🏥 <b>Position Health</b>\n\nP&L: $${data.totalPnl}\n\n${lines.join("\n")}\n\n${data.summary}`);
+      } catch { await reply(chatId, "❌ Health check failed"); }
       break;
     }
 
