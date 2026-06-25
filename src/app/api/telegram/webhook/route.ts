@@ -38,7 +38,7 @@ async function handleCommand(chatId: number, text: string) {
   switch (cmd) {
     case "/help":
     case "/start":
-      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score\n/pending — Unacted picks\n/accept NVDA — Accept pick\n/reject NVDA — Reject pick\n/add NVDA — Add to watchlist\n/remove NVDA — Remove from watchlist\n/rs — RS leaders\n/shift — Structural shift\n/run — Trigger scan\n/brief — Morning brief\n/help — This message`);
+      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score\n/pending — Unacted picks\n/accept NVDA — Accept pick\n/reject NVDA — Reject pick\n/add NVDA — Add to watchlist\n/remove NVDA — Remove from watchlist\n/rs — RS leaders\n/shift — Structural shift\n/perf — Agent accuracy attribution\n/mtf [SYM] — Multi-timeframe trend\n/rebal — Rebalance suggestions\n/corr — Correlation risks\n/run — Trigger scan\n/brief — Morning brief\n/help — This message`);
       break;
 
     case "/status": {
@@ -203,6 +203,54 @@ async function handleCommand(chatId: number, text: string) {
       break;
     }
 
+    case "/perf": {
+      try {
+        const res = await fetch(`${baseUrl}/api/cron/performance-attribution?secret=${CRON_SECRET}`);
+        const data = await res.json();
+        if (!data.agentAttribution || data.agentAttribution.length === 0) {
+          await reply(chatId, "📊 No closed trades for attribution yet");
+          break;
+        }
+        const lines = data.agentAttribution.map((a: { agent: string; accuracy: number; callsMade: number; contribution: number }) =>
+          `${a.accuracy >= 70 ? "🟢" : a.accuracy >= 50 ? "🟡" : "🔴"} ${a.agent}: ${a.accuracy}% acc (${a.callsMade} calls, ${a.contribution > 0 ? "+" : ""}${a.contribution}% P&L)`
+        );
+        await reply(chatId, `📊 <b>Agent Performance</b>\n\n${lines.join("\n")}\n\n🏆 Best: ${data.bestAgent}\n💀 Worst: ${data.worstAgent}`);
+      } catch { await reply(chatId, "❌ Performance check failed"); }
+      break;
+    }
+
+    case "/mtf": {
+      const sym = arg || "";
+      try {
+        const url = sym ? `${baseUrl}/api/cron/multi-timeframe?secret=${CRON_SECRET}&symbol=${sym}` : `${baseUrl}/api/cron/multi-timeframe?secret=${CRON_SECRET}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!data.results || data.results.length === 0) { await reply(chatId, "❌ No MTF data"); break; }
+        const lines = data.results.slice(0, 8).map((r: { symbol: string; daily: { trend: string }; weekly: { trend: string }; monthly: { trend: string }; alignment: string }) =>
+          `${r.alignment.startsWith("🟢") ? "🟢" : r.alignment.startsWith("🔴") ? "🔴" : "⚠️"} ${r.symbol}: D=${r.daily.trend[0]} W=${r.weekly.trend[0]} M=${r.monthly.trend[0]}`
+        );
+        await reply(chatId, `📊 <b>Multi-Timeframe</b>\n\n${lines.join("\n")}\n\n${data.summary}`);
+      } catch { await reply(chatId, "❌ MTF check failed"); }
+      break;
+    }
+
+    case "/rebal": {
+      try {
+        const res = await fetch(`${baseUrl}/api/cron/smart-rebalance?secret=${CRON_SECRET}`);
+        const data = await res.json();
+        if (!data.suggestions || data.suggestions.length === 0) {
+          await reply(chatId, data.message || "✅ No positions to rebalance");
+          break;
+        }
+        const lines = data.suggestions.map((s: { symbol: string; action: string; currentWeight: number; reason: string }) =>
+          `${s.action === "ADD" ? "🟢 ADD" : s.action === "TRIM" ? "🔴 TRIM" : "⚪ HOLD"} ${s.symbol} (${s.currentWeight}%)\n  ${s.reason}`
+        );
+        const extra = data.correlationWarnings?.length > 0 ? `\n\n${data.correlationWarnings[0]}` : "";
+        await reply(chatId, `⚖️ <b>Rebalance</b>\n\n${lines.join("\n")}\n\n${data.summary}${extra}`);
+      } catch { await reply(chatId, "❌ Rebalance check failed"); }
+      break;
+    }
+
     default:
       if (text.startsWith("/")) {
         await reply(chatId, `❓ Unknown command. Try /help`);
@@ -231,7 +279,7 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     webhook: "active",
-    commands: ["/status", "/score <SYMBOL>", "/pending", "/rs", "/run", "/brief", "/help"],
+    commands: ["/status", "/score <SYMBOL>", "/pending", "/rs", "/perf", "/mtf [SYM]", "/rebal", "/corr", "/run", "/brief", "/help"],
     setup: `curl "https://api.telegram.org/bot<TOKEN>/setWebhook?url=https://<URL>/api/telegram/webhook"`,
   });
 }
