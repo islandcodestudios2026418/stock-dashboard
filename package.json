@@ -9,6 +9,7 @@
     "lint": "eslint",
     "backtest": "tsx scripts/run-backtest.ts",
     "backtest:batch": "tsx scripts/batch-backtest.ts",
+    "validate:sndk": "tsx scripts/validate-sndk-patterns.ts",
     "check": "tsx scripts/setup-check.ts",
     "test:local": "tsx scripts/local-test.ts",
     "setup": "tsx scripts/setup-supabase.ts",

@@ -38,7 +38,7 @@ async function handleCommand(chatId: number, text: string) {
   switch (cmd) {
     case "/help":
     case "/start":
-      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score\n/top — Signal composite ranking\n/converge — Multi-layer convergence\n/breadth — Market breadth\n/entry [SYM] — Entry timing patterns\n/exit — Exit signals for positions\n/options [SYM] — Options flow analysis\n/inst [SYM] — Institutional accumulation\n/supply [SYM] — SNDK supply-demand pattern\n/pipeline — Full daily digest\n/pending — Unacted picks\n/accept NVDA — Accept pick\n/reject NVDA — Reject pick\n/add NVDA — Add to watchlist\n/remove NVDA — Remove\n/rs — RS leaders\n/shift — Structural shift\n/perf — Agent attribution\n/mtf [SYM] — Multi-timeframe\n/rebal — Rebalance\n/gaps — Gap scanner\n/vol — Vol regime\n/health — Position risk\n/corr — Correlations\n/run — Trigger scan\n/brief — Morning brief\n/help — This message`);
+      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score\n/dash NVDA — Full signal dashboard\n/top — Signal composite ranking\n/converge — Multi-layer convergence\n/breadth — Market breadth\n/entry [SYM] — Entry timing patterns\n/exit — Exit signals for positions\n/options [SYM] — Options flow analysis\n/inst [SYM] — Institutional accumulation\n/supply [SYM] — SNDK supply-demand pattern\n/pipeline — Full daily digest\n/pending — Unacted picks\n/accept NVDA — Accept pick\n/reject NVDA — Reject pick\n/add NVDA — Add to watchlist\n/remove NVDA — Remove\n/rs — RS leaders\n/shift — Structural shift\n/perf — Agent attribution\n/mtf [SYM] — Multi-timeframe\n/rebal — Rebalance\n/gaps — Gap scanner\n/vol — Vol regime\n/health — Position risk\n/corr — Correlations\n/run — Trigger scan\n/brief — Morning brief\n/help — This message`);
       break;
 
     case "/status": {
@@ -437,6 +437,65 @@ async function handleCommand(chatId: number, text: string) {
         );
         await reply(chatId, `🎯 <b>Signal Convergence</b>\n\n${lines.join("\n\n")}\n\n${data.summary}`);
       } catch { await reply(chatId, "❌ Convergence check failed"); }
+      break;
+    }
+
+    case "/dashboard":
+    case "/dash": {
+      if (!arg) { await reply(chatId, "Usage: /dashboard NVDA — shows all signals for one stock"); break; }
+      await reply(chatId, `🔍 Analyzing ${arg}...`);
+      try {
+        // Fetch multiple signals for this one stock in parallel
+        const [scoreRes, entryRes, optRes, instRes, sdRes] = await Promise.all([
+          fetch(`${baseUrl}/api/cron/test?symbol=${arg}`).then(r => r.json()).catch(() => null),
+          fetch(`${baseUrl}/api/cron/entry-timing?secret=${CRON_SECRET}&symbol=${arg}`).then(r => r.json()).catch(() => null),
+          fetch(`${baseUrl}/api/cron/options-flow?secret=${CRON_SECRET}&symbol=${arg}`).then(r => r.json()).catch(() => null),
+          fetch(`${baseUrl}/api/cron/institutional-tracker?secret=${CRON_SECRET}&symbol=${arg}`).then(r => r.json()).catch(() => null),
+          fetch(`${baseUrl}/api/cron/supply-demand?secret=${CRON_SECRET}&symbol=${arg}`).then(r => r.json()).catch(() => null),
+        ]);
+
+        const lines: string[] = [];
+        lines.push(`📊 <b>${arg} — Full Signal Dashboard</b>\n`);
+
+        // Score
+        if (scoreRes?.scoring) {
+          const s = scoreRes.scoring;
+          const agents = s.agents?.map((a: { agent: string; score: number }) => `${a.agent.split("(")[1]?.replace(")", "") || a.agent}${a.score}`).join(" | ");
+          lines.push(`📈 Score: ${s.avgScore?.toFixed(0)}/100 ${s.consensus ? "🟢 CONSENSUS" : "⚪"}`);
+          lines.push(`   ${agents || "N/A"}`);
+        }
+
+        // Entry timing
+        if (entryRes?.signals?.length > 0) {
+          const e = entryRes.signals[0];
+          lines.push(`\n⏱️ Entry: ${e.pattern} (${e.confidence}%)`);
+          if (e.entryZone) lines.push(`   Zone: $${e.entryZone.low.toFixed(2)}-$${e.entryZone.high.toFixed(2)}`);
+        } else {
+          lines.push(`\n⏱️ Entry: No pattern`);
+        }
+
+        // Options
+        if (optRes?.all?.length > 0) {
+          const o = optRes.all[0];
+          lines.push(`\n📞 Options: ${o.signal} (${o.strength}%)`);
+          if (o.details) lines.push(`   P/C: ${o.details.putCallRatio} | MaxPain: $${o.details.maxPainStrike || "?"}`);
+        }
+
+        // Institutional
+        if (instRes?.all?.length > 0) {
+          const i = instRes.all[0];
+          lines.push(`\n🏦 Institutional: ${i.phase}${i.signal !== "NONE" ? ` → ${i.signal} (${i.confidence}%)` : ""}`);
+        }
+
+        // Supply-demand
+        if (sdRes?.all?.length > 0) {
+          const sd = sdRes.all[0];
+          lines.push(`\n⚡ SNDK: ${sd.score}/100 (${sd.phase})`);
+          if (sd.triggers?.length > 0) lines.push(`   ${sd.triggers[0].slice(0, 80)}`);
+        }
+
+        await reply(chatId, lines.join("\n"));
+      } catch { await reply(chatId, `❌ Dashboard for ${arg} failed`); }
       break;
     }
 
