@@ -38,7 +38,7 @@ async function handleCommand(chatId: number, text: string) {
   switch (cmd) {
     case "/help":
     case "/start":
-      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score\n/top — Signal composite ranking\n/breadth — Market breadth\n/entry [SYM] — Entry timing patterns\n/exit — Exit signals for positions\n/pending — Unacted picks\n/accept NVDA — Accept pick\n/reject NVDA — Reject pick\n/add NVDA — Add to watchlist\n/remove NVDA — Remove\n/rs — RS leaders\n/shift — Structural shift\n/perf — Agent attribution\n/mtf [SYM] — Multi-timeframe\n/rebal — Rebalance\n/gaps — Gap scanner\n/vol — Vol regime\n/health — Position risk\n/corr — Correlations\n/run — Trigger scan\n/brief — Morning brief\n/help — This message`);
+      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score\n/top — Signal composite ranking\n/breadth — Market breadth\n/entry [SYM] — Entry timing patterns\n/exit — Exit signals for positions\n/options [SYM] — Options flow analysis\n/inst [SYM] — Institutional accumulation\n/supply [SYM] — SNDK supply-demand pattern\n/pipeline — Full daily digest\n/pending — Unacted picks\n/accept NVDA — Accept pick\n/reject NVDA — Reject pick\n/add NVDA — Add to watchlist\n/remove NVDA — Remove\n/rs — RS leaders\n/shift — Structural shift\n/perf — Agent attribution\n/mtf [SYM] — Multi-timeframe\n/rebal — Rebalance\n/gaps — Gap scanner\n/vol — Vol regime\n/health — Position risk\n/corr — Correlations\n/run — Trigger scan\n/brief — Morning brief\n/help — This message`);
       break;
 
     case "/status": {
@@ -329,6 +329,96 @@ async function handleCommand(chatId: number, text: string) {
         );
         await reply(chatId, `⏱️ <b>Entry Timing</b>\n\n${lines.join("\n\n")}`);
       } catch { await reply(chatId, "❌ Entry timing failed"); }
+      break;
+    }
+
+    case "/options":
+    case "/flow": {
+      const sym = arg || "";
+      try {
+        const url = sym ? `${baseUrl}/api/cron/options-flow?secret=${CRON_SECRET}&symbol=${sym}` : `${baseUrl}/api/cron/options-flow?secret=${CRON_SECRET}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        if (!data.signals || data.signals.length === 0) {
+          await reply(chatId, `⚪ No significant options flow${sym ? ` for ${sym}` : ""}`);
+          break;
+        }
+        const lines = data.signals.slice(0, 6).map((s: { symbol: string; signal: string; strength: number; reasoning: string; details?: { putCallRatio?: number; maxPainStrike?: number | null } }) =>
+          `${s.signal === "BULLISH_FLOW" || s.signal === "SMART_MONEY_CALL" ? "🟢" : s.signal === "NEUTRAL" ? "⚪" : "🔴"} <b>${s.symbol}</b> — ${s.signal} (${s.strength}%)\n  ${s.reasoning.slice(0, 100)}${s.details?.putCallRatio ? `\n  P/C: ${s.details.putCallRatio}` : ""}${s.details?.maxPainStrike ? ` | MaxPain: $${s.details.maxPainStrike}` : ""}`
+        );
+        await reply(chatId, `📊 <b>Options Flow</b> (${data.marketSentiment})\n\n${lines.join("\n\n")}\n\n${data.summary}`);
+      } catch { await reply(chatId, "❌ Options flow failed"); }
+      break;
+    }
+
+    case "/institutional":
+    case "/inst": {
+      const sym = arg || "";
+      try {
+        const url = sym ? `${baseUrl}/api/cron/institutional-tracker?secret=${CRON_SECRET}&symbol=${sym}` : `${baseUrl}/api/cron/institutional-tracker?secret=${CRON_SECRET}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const acc = data.accumulating || [];
+        if (acc.length === 0) {
+          await reply(chatId, "⚪ No institutional accumulation patterns detected");
+          break;
+        }
+        const lines = acc.slice(0, 6).map((a: { symbol: string; signal: string; phase: string; confidence: number; reasoning: string }) =>
+          `🏦 <b>${a.symbol}</b> — ${a.signal}\n  Phase: ${a.phase} (${a.confidence}%)\n  ${a.reasoning.slice(0, 100)}`
+        );
+        const phases = data.phaseBreakdown || {};
+        await reply(chatId, `🏦 <b>Institutional Tracker</b>\n\n${lines.join("\n\n")}\n\n📊 Phases: A=${phases.accumulation || 0} M=${phases.markup || 0} D=${phases.distribution || 0} MD=${phases.markdown || 0}`);
+      } catch { await reply(chatId, "❌ Institutional tracker failed"); }
+      break;
+    }
+
+    case "/pipeline":
+    case "/digest": {
+      await reply(chatId, "⏳ Running full pipeline...");
+      try {
+        const res = await fetch(`${baseUrl}/api/cron/pipeline?secret=${CRON_SECRET}&notify=false`);
+        const data = await res.json();
+        if (data.textSummary) {
+          const msg = data.textSummary.length > 4000 ? data.textSummary.slice(0, 3950) + "\n[truncated]" : data.textSummary;
+          await reply(chatId, msg);
+        } else {
+          await reply(chatId, `✅ Pipeline complete in ${data.pipelineDurationMs}ms. ${data.pipeline?.filter((s: { status: string }) => s.status === "success").length}/${data.pipeline?.length} stages OK.`);
+        }
+      } catch { await reply(chatId, "❌ Pipeline failed"); }
+      break;
+    }
+
+    case "/supply":
+    case "/demand":
+    case "/sndk": {
+      const sym = arg || "";
+      try {
+        const url = sym ? `${baseUrl}/api/cron/supply-demand?secret=${CRON_SECRET}&symbol=${sym}` : `${baseUrl}/api/cron/supply-demand?secret=${CRON_SECRET}`;
+        const res = await fetch(url);
+        const data = await res.json();
+        const strong = data.strongPatterns || [];
+        const emerging = data.emergingPatterns || [];
+        if (strong.length === 0 && emerging.length === 0) {
+          await reply(chatId, "⚪ No supply-demand imbalance detected on watchlist");
+          break;
+        }
+        const lines: string[] = [];
+        if (strong.length > 0) {
+          lines.push("<b>🔥 Strong SNDK Patterns:</b>");
+          for (const s of strong.slice(0, 5)) {
+            lines.push(`  ${s.symbol}: ${s.score}/100 (${s.phase})`);
+            if (s.triggers?.length > 0) lines.push(`    → ${(s.triggers[0] as string).slice(0, 80)}`);
+          }
+        }
+        if (emerging.length > 0) {
+          lines.push(strong.length > 0 ? "" : "");
+          lines.push("<b>📊 Emerging:</b>");
+          for (const e of emerging.slice(0, 4)) {
+            lines.push(`  ${e.symbol}: ${e.score}/100 (${e.phase})`);
+          }
+        }
+        await reply(chatId, `⚡ <b>Supply-Demand Analysis</b>\n\n${lines.join("\n")}\n\n${data.summary}`);
+      } catch { await reply(chatId, "❌ Supply-demand check failed"); }
       break;
     }
 

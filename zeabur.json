@@ -22,8 +22,8 @@
   "cron": [
     {
       "schedule": "30 12 * * 1-5",
-      "path": "/api/cron/trigger?secret=${CRON_SECRET}",
-      "comment": "US pre-market: 20:30 Taiwan (12:30 UTC) weekdays"
+      "path": "/api/cron/pipeline?secret=${CRON_SECRET}",
+      "comment": "US pre-market PIPELINE: 20:30 Taiwan (12:30 UTC) weekdays — full daily intelligence digest"
     },
     {
       "schedule": "0 0 * * 1-5",
@@ -54,6 +54,11 @@
       "schedule": "0 21 * * 0",
       "path": "/api/cron/sndk-scanner?secret=${CRON_SECRET}",
       "comment": "SNDK scanner: Sunday 05:00 Taiwan (21:00 UTC) - scan universe for new candidates"
+    },
+    {
+      "schedule": "0 22 * * 0",
+      "path": "/api/cron/supply-demand?secret=${CRON_SECRET}",
+      "comment": "Supply-demand scan: Sunday 06:00 Taiwan (22:00 UTC) - SNDK pattern detection"
     }
   ],
   "health_check": {
