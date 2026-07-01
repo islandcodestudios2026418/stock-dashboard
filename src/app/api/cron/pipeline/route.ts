@@ -38,6 +38,7 @@ interface DailyDigest {
     institutionalAccumulation: { symbol: string; signal: string; phase: string; confidence: number }[];
     structuralShifts: { symbol: string; shiftScore: number; reasoning: string }[];
     supplyDemand: { symbol: string; score: number; phase: string; triggers: string[] }[];
+    convergence: { symbol: string; convergenceScore: number; layerCount: number; urgency: string; reasoning: string }[];
     exitAlerts: { symbol: string; signal: string; urgency: number; detail: string }[];
     positionHealth: { totalPositions: number; atRisk: number; summary: string };
     actionItems: string[];
@@ -111,6 +112,11 @@ function buildDigest(stages: PipelineStage[]): DailyDigest["digest"] {
   const supplyDemand = ((sdData?.strongPatterns || []) as { symbol: string; score: number; phase: string; triggers: string[] }[])
     .slice(0, 5);
 
+  // Convergence: when multiple signal layers agree on same stock
+  const convData = get("convergence");
+  const convergence = ((convData?.signals || []) as { symbol: string; convergenceScore: number; layerCount: number; urgency: string; reasoning: string }[])
+    .slice(0, 5);
+
   // Exit signals
   const exitData = get("exit-signals");
   const exitAlerts = ((exitData?.signals || []) as { symbol: string; signal: string; urgency: number; detail: string }[])
@@ -123,6 +129,12 @@ function buildDigest(stages: PipelineStage[]): DailyDigest["digest"] {
 
   // Action items: combine all urgencies
   const actionItems: string[] = [];
+
+  // CONVERGENCE is the highest priority action item
+  const criticalConvergence = convergence.filter(c => c.urgency === "CRITICAL" || c.urgency === "HIGH");
+  if (criticalConvergence.length > 0) {
+    actionItems.push(`🔥🔥 CONVERGENCE: ${criticalConvergence.map(c => `${c.symbol}(${c.layerCount}/5 layers, ${c.convergenceScore}%)`).join(", ")} — HIGHEST CONVICTION`);
+  }
 
   if (exitAlerts.length > 0) {
     actionItems.push(`🚨 EXIT: ${exitAlerts.map(e => `${e.symbol} (${e.signal})`).join(", ")}`);
@@ -157,6 +169,7 @@ function buildDigest(stages: PipelineStage[]): DailyDigest["digest"] {
     institutionalAccumulation: instAccumulating,
     structuralShifts: shifts,
     supplyDemand,
+    convergence,
     exitAlerts,
     positionHealth: { totalPositions: healthItems.length, atRisk, summary: (healthData?.summary as string) || "No positions" },
     actionItems,
@@ -218,6 +231,16 @@ function buildTextSummary(digest: DailyDigest["digest"], date: string): string {
     lines.push("");
   }
 
+  // Convergence (highest conviction)
+  if (digest.convergence.length > 0) {
+    lines.push(`🎯 CONVERGENCE (multi-layer agreement):`);
+    for (const c of digest.convergence) {
+      lines.push(`  ${c.urgency === "CRITICAL" ? "🔥🔥" : "🔥"} ${c.symbol}: ${c.convergenceScore}/100 (${c.layerCount}/5 layers)`);
+      lines.push(`    ${c.reasoning.slice(0, 100)}`);
+    }
+    lines.push("");
+  }
+
   // Exit alerts
   if (digest.exitAlerts.length > 0) {
     lines.push(`🚨 EXIT SIGNALS:`);
@@ -250,7 +273,7 @@ export async function GET(req: NextRequest) {
   ]);
 
   // Group 2: stock-level analysis (can run in parallel)
-  const [compositeStage, entryStage, exitStage, optionsStage, instStage, shiftStage, healthStage, supplyDemandStage] = await Promise.all([
+  const [compositeStage, entryStage, exitStage, optionsStage, instStage, shiftStage, healthStage, supplyDemandStage, convergenceStage] = await Promise.all([
     fetchStage(baseUrl, "/api/cron/signal-composite", "signal-composite"),
     fetchStage(baseUrl, "/api/cron/entry-timing", "entry-timing"),
     fetchStage(baseUrl, "/api/cron/exit-signals", "exit-signals"),
@@ -259,9 +282,10 @@ export async function GET(req: NextRequest) {
     fetchStage(baseUrl, "/api/cron/structural-shift", "structural-shift"),
     fetchStage(baseUrl, "/api/cron/position-health", "position-health"),
     fetchStage(baseUrl, "/api/cron/supply-demand", "supply-demand"),
+    fetchStage(baseUrl, "/api/cron/convergence", "convergence"),
   ]);
 
-  const allStages = [volStage, breadthStage, compositeStage, entryStage, exitStage, optionsStage, instStage, shiftStage, healthStage, supplyDemandStage];
+  const allStages = [volStage, breadthStage, compositeStage, entryStage, exitStage, optionsStage, instStage, shiftStage, healthStage, supplyDemandStage, convergenceStage];
 
   // Build unified digest
   const digest = buildDigest(allStages);
@@ -304,6 +328,22 @@ export async function GET(req: NextRequest) {
           body: JSON.stringify({ chat_id: chatId, text: msg }),
         });
       } catch { /* non-critical */ }
+
+      // Send SEPARATE urgent alert for CRITICAL convergence (ensures it's not lost in digest)
+      const criticalConv = digest.convergence.filter(c => c.urgency === "CRITICAL" || c.urgency === "HIGH");
+      if (criticalConv.length > 0) {
+        const alertLines = criticalConv.map(c =>
+          `⚡ <b>${c.symbol}</b> — ${c.convergenceScore}/100 (${c.layerCount}/5 layers)\n   ${c.reasoning}`
+        );
+        const urgentMsg = `🔥🔥🔥 <b>CONVERGENCE ALERT</b> 🔥🔥🔥\n\n${alertLines.join("\n\n")}\n\n⚡ Multiple independent signals agree. HIGHEST conviction. Review immediately.`;
+        try {
+          await fetch(`https://api.telegram.org/bot${token}/sendMessage`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ chat_id: chatId, text: urgentMsg, parse_mode: "HTML" }),
+          });
+        } catch { /* non-critical */ }
+      }
     }
   }
 
