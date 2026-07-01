@@ -264,6 +264,18 @@ export async function GET(req: NextRequest) {
   const pipelineStart = Date.now();
   const baseUrl = process.env.ZEABUR_URL || `http://localhost:${process.env.PORT || 3000}`;
   const sendTelegram = req.nextUrl.searchParams.get("notify") !== "false";
+  const skipAnalysis = req.nextUrl.searchParams.get("skip_analysis") === "true";
+
+  // Step 0: Run base analysis first (so signal-composite has fresh data)
+  if (!skipAnalysis) {
+    try {
+      await fetch(`${baseUrl}/api/cron/run-analysis`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${CRON_SECRET}` },
+        signal: AbortSignal.timeout(60000),
+      });
+    } catch { /* non-critical — composite can still read stale data */ }
+  }
 
   // Run all stages in parallel (grouped by dependency)
   // Group 1: no dependencies (market-level)
