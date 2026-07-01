@@ -38,7 +38,7 @@ async function handleCommand(chatId: number, text: string) {
   switch (cmd) {
     case "/help":
     case "/start":
-      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score\n/top — Signal composite ranking\n/breadth — Market breadth\n/entry [SYM] — Entry timing patterns\n/exit — Exit signals for positions\n/options [SYM] — Options flow analysis\n/inst [SYM] — Institutional accumulation\n/supply [SYM] — SNDK supply-demand pattern\n/pipeline — Full daily digest\n/pending — Unacted picks\n/accept NVDA — Accept pick\n/reject NVDA — Reject pick\n/add NVDA — Add to watchlist\n/remove NVDA — Remove\n/rs — RS leaders\n/shift — Structural shift\n/perf — Agent attribution\n/mtf [SYM] — Multi-timeframe\n/rebal — Rebalance\n/gaps — Gap scanner\n/vol — Vol regime\n/health — Position risk\n/corr — Correlations\n/run — Trigger scan\n/brief — Morning brief\n/help — This message`);
+      await reply(chatId, `🤖 <b>Stock Dashboard Bot</b>\n\n/status — System health\n/score NVDA — Latest score\n/top — Signal composite ranking\n/converge — Multi-layer convergence\n/breadth — Market breadth\n/entry [SYM] — Entry timing patterns\n/exit — Exit signals for positions\n/options [SYM] — Options flow analysis\n/inst [SYM] — Institutional accumulation\n/supply [SYM] — SNDK supply-demand pattern\n/pipeline — Full daily digest\n/pending — Unacted picks\n/accept NVDA — Accept pick\n/reject NVDA — Reject pick\n/add NVDA — Add to watchlist\n/remove NVDA — Remove\n/rs — RS leaders\n/shift — Structural shift\n/perf — Agent attribution\n/mtf [SYM] — Multi-timeframe\n/rebal — Rebalance\n/gaps — Gap scanner\n/vol — Vol regime\n/health — Position risk\n/corr — Correlations\n/run — Trigger scan\n/brief — Morning brief\n/help — This message`);
       break;
 
     case "/status": {
@@ -419,6 +419,24 @@ async function handleCommand(chatId: number, text: string) {
         }
         await reply(chatId, `⚡ <b>Supply-Demand Analysis</b>\n\n${lines.join("\n")}\n\n${data.summary}`);
       } catch { await reply(chatId, "❌ Supply-demand check failed"); }
+      break;
+    }
+
+    case "/converge":
+    case "/convergence": {
+      await reply(chatId, "🔍 Checking signal convergence...");
+      try {
+        const res = await fetch(`${baseUrl}/api/cron/convergence?secret=${CRON_SECRET}`);
+        const data = await res.json();
+        if (!data.signals || data.signals.length === 0) {
+          await reply(chatId, "⚪ No convergence detected — signals not aligned on any single stock");
+          break;
+        }
+        const lines = data.signals.slice(0, 5).map((s: { symbol: string; convergenceScore: number; layerCount: number; urgency: string; reasoning: string }) =>
+          `${s.urgency === "CRITICAL" ? "🔥🔥" : s.urgency === "HIGH" ? "🔥" : "📊"} <b>${s.symbol}</b> — ${s.convergenceScore}/100 (${s.layerCount}/5 layers)\n  ${s.urgency} | ${s.reasoning.slice(0, 120)}`
+        );
+        await reply(chatId, `🎯 <b>Signal Convergence</b>\n\n${lines.join("\n\n")}\n\n${data.summary}`);
+      } catch { await reply(chatId, "❌ Convergence check failed"); }
       break;
     }
 
